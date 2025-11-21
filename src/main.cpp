@@ -10,7 +10,7 @@
 const int xPin = A0;
 const int yPin = A1;
 const int zPin = A2;
-const int SHAKE_THRESHOLD = 215;
+const int SHAKE_THRESHOLD = 235;
 int lastX = 0;
 int lastY = 0;
 int lastZ = 0;
@@ -30,22 +30,22 @@ void loop() {
   int yRaw = analogRead(yPin);
   int zRaw = analogRead(zPin);
 
-  // Compute difference from last readings (shake), combine
+  // Compute horizontal motion, combine difference readings
   int dx = abs(xRaw - lastX);
   int dy = abs(yRaw - lastY);
   int dz = abs(zRaw - lastZ);
-  int shakeMagnitude = dx + dy + dz;
+  int shakeMagnitude = dx + dy; //+ dz;
 
-  /* UNCOMMENT TO PRINT DEBUG VALUES
-  Serial.print("X: ");
-  Serial.print(xRaw);
-  Serial.print("\tY: ");
-  Serial.print(yRaw);
-  Serial.print("\tZ: ");
-  Serial.println(zRaw);
-  Serial.print("\tShake: ");
-  Serial.println(shakeMagnitude);
-  */
+  //UNCOMMENT TO PRINT DEBUG VALUES
+  // Serial.print("X: ");
+  // Serial.print(xRaw);
+  // Serial.print("\tY: ");
+  // Serial.print(yRaw);
+  // Serial.print("\tZ: ");
+  // Serial.println(zRaw);
+  //Serial.print("\tShake: ");
+  //Serial.println(shakeMagnitude);
+
 
   // Alert if we shake too hard
   if (shakeMagnitude > SHAKE_THRESHOLD) {

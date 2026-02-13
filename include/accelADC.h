@@ -24,15 +24,15 @@ class accelADC {
     void calibrate();
 
     int _xPin, _yPin, _zPin;
-    uint32_t biasX, _biasY, _biasZ;
+    uint32_t _biasX, _biasY, _biasZ;
     uint32_t _lastSampleTime;
 
-    // Adjust 200Hz sampling rate as necessary (should cover all earthquake waves up to 100Hz)
-    const float SAMPLE_RATE = 200.0f;
+    // TODO: Adjust 200Hz sampling rate as necessary (should cover all earthquake waves up to 100Hz)
+    const float SAMPLE_RATE_HZ = 200.0f;
     const uint32_t SAMPLE_PERIOD_US = (1000000.0f / SAMPLE_RATE_HZ);
 
-    // Set for LilyGO T-Beam and EVAL-ADXL354
-    const BIAS_SAMPLES = 1000;
+    // TODO: Adjust accordingly.
+    const uint32_t BIAS_SAMPLES = 1000;
     const float ADXL_SENSITIVITY_MV_PER_G = 1000.0f;
     const float G_TO_ACCEL = 9.80665f;
 };

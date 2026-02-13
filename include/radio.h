@@ -22,14 +22,17 @@ class Radio {
         void sleep();
         void standby();
 
+
         private:
         SX1276* _radio;
         int _cs;
         int _irq;
         int _rst;
+        volatile int _receivedFlag;
 
-        int _receivedFlag;
-        void setFlag(void* radioPtr);
+
+        static Radio* instance;
+        static void setFlag();
 };
 
 #endif

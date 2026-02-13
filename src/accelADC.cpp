@@ -39,9 +39,9 @@ void accelADC::calibrate() {
     uint64_t sumZ = 0;
 
     for (int i = 0; i < BIAS_SAMPLES; i++) {
-        sum_x += esp_adc_cal_raw_to_voltage(analogRead(xPin), &adc_chars);
-        sum_y += esp_adc_cal_raw_to_voltage(analogRead(yPin), &adc_chars);
-        sum_z += esp_adc_cal_raw_to_voltage(analogRead(zPin), &adc_chars);
+        sumX += esp_adc_cal_raw_to_voltage(analogRead(_xPin), &adc_chars);
+        sumY += esp_adc_cal_raw_to_voltage(analogRead(_yPin), &adc_chars);
+        sumZ += esp_adc_cal_raw_to_voltage(analogRead(_zPin), &adc_chars);
         delay(2);
     }
 
@@ -64,8 +64,8 @@ bool accelADC::sampleReady() {
 
 // read
 // Gathers sample, adjusting for nonlinear parameters and bias, returning
-// struct with x/y/z acceleration in m/s
-AccelData accelADC:read() {
+// struct with x/y/z acceleration in m/s^2
+AccelData accelADC::read() {
     // Read ADC values (voltage) considering nonlinear parameters
     uint32_t x_mv = esp_adc_cal_raw_to_voltage(analogRead(_xPin), &adc_chars);
     uint32_t y_mv = esp_adc_cal_raw_to_voltage(analogRead(_yPin), &adc_chars);

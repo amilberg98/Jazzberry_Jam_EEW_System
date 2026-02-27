@@ -44,6 +44,7 @@ void EEWStateMachine::handleMonitoring() {
                 return;
         }
 
+
         if (accel.sampleReady()) {
                 AccelData data = accel.read();
                 float filtered = filter.process(data.ax);
@@ -56,7 +57,7 @@ void EEWStateMachine::handleMonitoring() {
         }
 
         recvNetworkAlert();
-        checkBattery();
+        float voltage = checkBattery();
 }
 
 // handleAlert

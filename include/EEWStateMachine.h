@@ -50,13 +50,16 @@ private:
 
     // Placeholder functions 
         // In main?
-        void checkBattery() {} // Check battery via analogRead voltage divider
-        bool errorDetected() {}
+        int checkBattery() { // TODO fix doesnt work
+            uint32_t raw = analogRead(35);
+            return (raw / 1000.0);
+        } // Check battery via analogRead voltage divider
+        bool errorDetected() { return false; }
 
         // For future alert class
         void startLocalAlert() {} // Start playing device alert
-        void stopLocalAlert() {} // Stop playing device alert
-        void startErrorAlert() {} // Alert locally with different tone
+        void stopLocalAlert() { } // Stop playing device alert
+        void startErrorAlert() { } // Alert locally with different tone
         void sendNetworkAlert() {} // Send alert over LoRA
         void recvNetworkAlert() {} // Receive alert over LoRA
 

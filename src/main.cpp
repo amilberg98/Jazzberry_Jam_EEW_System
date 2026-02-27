@@ -1,6 +1,8 @@
 #include <Arduino.h>
 #include "accelADC.h"
 #include "radio.h"
+#include "biquad.h"
+#include "STALTA.h"
 
 accelADC accel(36, 39, 35);
 Radio radio(18, 26, 23);
@@ -32,9 +34,15 @@ void loop() {
   } else {
     Serial.println("Transmission failed");
   }
-
-
   AccelData sample = accel.read();
+ 
+  Biquad filter;
+  StaLtaDetector detector;
+
+  float filtered_sample = filter.process(sample.ax);
+  bool triggered = detector.update(filtered_sample);
+
+  
 
   // Serial.print(sample.ax, 6); Serial.print(", ");
   // Serial.print(sample.ay, 6); Serial.print(", ");

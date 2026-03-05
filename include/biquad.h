@@ -1,6 +1,8 @@
 #ifndef BIQUAD_H
 #define BIQUAD_H
 
+#include <Arduino.h>
+
 class Biquad {
         public:
         Biquad();

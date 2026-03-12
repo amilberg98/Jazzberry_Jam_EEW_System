@@ -1,15 +1,16 @@
 #include "STALTA.h"
+#include "Arduino.h"
 
-StaLtaDetector::StaLtaDetector(){
-    float sta_buf(STA_LEN);
-    float lta_buf(LTA_LEN); 
+STALTA::STALTA(){
+    for (int i = 0; i < STA_LEN; i++) sta_buf[i] = 0;
+    for (int i = 0; i < LTA_LEN; i++) lta_buf[i] = 0;
 }
 
-StaLtaDetector::~StaLtaDetector() {
+STALTA::~STALTA() {
 }
 
 // Feed one sample at a time. Returns true if "triggered" after update.
-bool StaLtaDetector::update(float x) {
+bool STALTA::update(float x) {
     const float e = std::fabs(x);
 
     // --- update STA rolling sum ---
@@ -24,7 +25,9 @@ bool StaLtaDetector::update(float x) {
     lta_sum += e;
     lta_i = (lta_i + 1) % LTA_LEN;
 
+
     samples_seen++;
+
 
     // Not enough history yet, so don't trigger
     if (samples_seen < MIN_LTA_FILL) {
@@ -37,6 +40,10 @@ bool StaLtaDetector::update(float x) {
     const float lta = lta_sum / (float)LTA_LEN;
     ratio = sta / (lta + ZERO);
 
+    // if (samples_seen % 100 == 0)
+    //     Serial.printf("STA: %.2f\n LTA: %.2f\n", sta, lta);
+
+
     // Hysteresis
     if (!triggered && ratio >= TRIG_ON) 
         triggered = true;
@@ -46,7 +53,9 @@ bool StaLtaDetector::update(float x) {
     return triggered;
 }
 
-bool StaLtaDetector::triggeredStatus() { return triggered; }
+bool STALTA::triggeredStatus() {
+ return triggered; 
+}
 
 
 

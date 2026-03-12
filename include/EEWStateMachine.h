@@ -5,6 +5,7 @@
 #include "accelADC.h"
 #include "biquad.h"
 #include "radio.h"
+#include "STALTA.h"
 
 
 // Handles main functionality of device, swapping between monitoring, alerting, and error states
@@ -15,7 +16,8 @@ public:
 
     EEWStateMachine(accelADC& accelRef,
                      Biquad& filterRef,
-                     Radio& loraRef);
+                     Radio& loraRef,
+                     STALTA& staltaRef );
 
     void begin();
     void update();
@@ -32,7 +34,7 @@ private:
     accelADC& accel;
     Biquad& filter;
     Radio& lora;
-    // STALTA& stalta; in the future once implemented
+    STALTA& stalta;
 
     int alertStartTime;
     const int ALERT_TIMEOUT = 10000;
@@ -62,16 +64,6 @@ private:
         void startErrorAlert() { } // Alert locally with different tone
         void sendNetworkAlert() {} // Send alert over LoRA
         void recvNetworkAlert() {} // Receive alert over LoRA
-
-
-    // Placeholder for STA/LTA class
-    class STALTA {
-        public:
-        void append(float sample) {} // Add to STA & LTA samples
-        bool thresholdExceeded() {} // Tell if STA/LTA alert threshold exceeded
-    };
-    
-    STALTA stalta;
 
 };
 

@@ -56,7 +56,6 @@ void accelADC::calibrate() {
 // Forces consistent 200Hz sampling rate. Detecting up to 100Hz via Nyquist, sufficient for earthquake waves.
 bool accelADC::sampleReady() {
     uint32_t currTime = micros();
-
     if (currTime - _lastSampleTime < SAMPLE_PERIOD_US) return false;
     _lastSampleTime = currTime;
     return true;
@@ -81,6 +80,8 @@ AccelData accelADC::read() {
     sample.ax = (x_centered / ADXL_SENSITIVITY_MV_PER_G) * G_TO_ACCEL;
     sample.ay = (y_centered / ADXL_SENSITIVITY_MV_PER_G) * G_TO_ACCEL;
     sample.az = (z_centered / ADXL_SENSITIVITY_MV_PER_G) * G_TO_ACCEL;
+
+    //Serial.printf("X: %.2f\n Y: %.2f\n Z: %.2f\n", sample.ax, sample.ay, sample.az);
 
     return sample;
 }

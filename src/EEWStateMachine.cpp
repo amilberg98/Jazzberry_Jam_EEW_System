@@ -3,10 +3,11 @@
 
 // Constructor
 // Assigns references to components to local variables
-EEWStateMachine::EEWStateMachine(accelADC& accelRef, Biquad& filterRef, Radio& loraRef):
+EEWStateMachine::EEWStateMachine(accelADC& accelRef, Biquad& filterRef, Radio& loraRef, STALTA& staltaRef):
 accel(accelRef),
 filter(filterRef),
-lora(loraRef) {};
+lora(loraRef),
+stalta(staltaRef) {};
 
 // begin
 // Starts LoRA listening and begins in Monitoring state
@@ -47,10 +48,11 @@ void EEWStateMachine::handleMonitoring() {
 
         if (accel.sampleReady()) {
                 AccelData data = accel.read();
-                float filtered = filter.process(data.ax);
-                stalta.append(filtered);
+                float filtered = filter.process(data.ay);
+                Serial.printf("%.2f\n%.2f\n", data.ay, filtered);
+                stalta.update(filtered);
 
-                if (stalta.thresholdExceeded()) {
+                if (stalta.triggeredStatus()) {
                         enterAlert();
                         return;
                 }
@@ -64,6 +66,7 @@ void EEWStateMachine::handleMonitoring() {
 // Checks for errors, sends LoRA network alert for timeout amount of time.
 // TODO: Add functionality to triger local alert.
 void EEWStateMachine::handleAlert() {
+        Serial.printf("ALERT\n");
         if (errorDetected()) {
                 enterError();
                 return;

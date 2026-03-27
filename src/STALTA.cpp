@@ -57,5 +57,19 @@ bool STALTA::triggeredStatus() {
  return triggered; 
 }
 
+float STALTA::getSTA() {
+    if (samples_seen < STA_LEN) return 0.0f;
+    return sta_sum / (float)STA_LEN;
+}
+
+float STALTA::getLTA() {
+    if (samples_seen < LTA_LEN) return 0.0f;
+    return lta_sum / (float)LTA_LEN;
+}
+
+float STALTA::getRatio() {
+    return ratio;
+}
+
 
 

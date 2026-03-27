@@ -8,6 +8,17 @@
 #include "STALTA.h"
 
 
+// Data packet for streaming sensor data over LoRA
+struct DataPacket {
+    float raw_accel;
+    float filtered_accel;
+    float sta;
+    float lta;
+    // float tauc; // TODO: implement TauC
+    // float pd;   // TODO: implement Pd
+};
+
+
 // Handles main functionality of device, swapping between monitoring, alerting, and error states
 class EEWStateMachine
 {

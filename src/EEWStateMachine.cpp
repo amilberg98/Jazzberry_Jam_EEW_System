@@ -49,8 +49,16 @@ void EEWStateMachine::handleMonitoring() {
         if (accel.sampleReady()) {
                 AccelData data = accel.read();
                 float filtered = filter.process(data.ay);
-                Serial.printf("%.2f\n%.2f\n", data.ay, filtered);
+                // Serial.printf("%.2f\n%.2f\n", data.ay, filtered);
                 stalta.update(filtered);
+
+                // Stream data over LoRA
+                DataPacket packet;
+                packet.raw_accel = data.ay;
+                packet.filtered_accel = filtered;
+                packet.sta = stalta.getSTA();
+                packet.lta = stalta.getLTA();
+                lora.send((uint8_t*)&packet, sizeof(DataPacket));
 
                 if (stalta.triggeredStatus()) {
                         enterAlert();

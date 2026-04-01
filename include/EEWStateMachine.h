@@ -6,6 +6,7 @@
 #include "biquad.h"
 #include "radio.h"
 #include "STALTA.h"
+#include "taucpd.h"
 
 
 // Handles main functionality of device, swapping between monitoring, alerting, and error states
@@ -17,7 +18,8 @@ public:
     EEWStateMachine(accelADC& accelRef,
                      Biquad& filterRef,
                      Radio& loraRef,
-                     STALTA& staltaRef );
+                     STALTA& staltaRef,
+                    TauCPdEstimator& taucpdRef );
 
     void begin();
     void update();
@@ -35,6 +37,7 @@ private:
     Biquad& filter;
     Radio& lora;
     STALTA& stalta;
+    TauCPdEstimator& taucpd;
 
     int alertStartTime;
     const int ALERT_TIMEOUT = 10000;

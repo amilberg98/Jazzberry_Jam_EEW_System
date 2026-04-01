@@ -3,11 +3,13 @@
 
 // Constructor
 // Assigns references to components to local variables
-EEWStateMachine::EEWStateMachine(accelADC& accelRef, Biquad& filterRef, Radio& loraRef, STALTA& staltaRef):
+EEWStateMachine::EEWStateMachine(accelADC& accelRef, Biquad& filterRef, Radio& loraRef, STALTA& staltaRef, TauCPdEstimator& taucpdRef):
 accel(accelRef),
 filter(filterRef),
 lora(loraRef),
-stalta(staltaRef) {};
+stalta(staltaRef),
+taucpd(taucpdRef)
+ {};
 
 // begin
 // Starts LoRA listening and begins in Monitoring state
@@ -48,7 +50,8 @@ void EEWStateMachine::handleMonitoring() {
 
         if (accel.sampleReady()) {
                 AccelData data = accel.read();
-                float filtered = filter.process(data.ay);
+                float filtered = filter.process(data.ay); // TODO: Use different axes? or only y?
+                taucpd.processSample(data.ay); // TODO above
                 Serial.printf("%.2f\n%.2f\n", data.ay, filtered);
                 stalta.update(filtered);
 

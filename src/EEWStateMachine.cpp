@@ -3,12 +3,13 @@
 
 // Constructor
 // Assigns references to components to local variables
-EEWStateMachine::EEWStateMachine(accelADC& accelRef, Biquad& filterRef, Radio& loraRef, STALTA& staltaRef, TauCPdEstimator& taucpdRef):
+EEWStateMachine::EEWStateMachine(accelADC& accelRef, Biquad& filterRef, Radio& loraRef, STALTA& staltaRef, TauCPdEstimator& taucpdRef, Alert& alertRef):
 accel(accelRef),
 filter(filterRef),
 lora(loraRef),
 stalta(staltaRef),
-taucpd(taucpdRef)
+taucpd(taucpdRef),
+alert(alertRef)
  {};
 
 // begin
@@ -61,7 +62,7 @@ void EEWStateMachine::handleMonitoring() {
                 }
         }
 
-        recvNetworkAlert();
+        alert.recvNetworkAlert();
         float voltage = checkBattery();
 }
 
@@ -75,7 +76,7 @@ void EEWStateMachine::handleAlert() {
                 return;
         }
 
-        sendNetworkAlert();
+        alert.sendNetworkAlert();
 
         if (millis() - alertStartTime > ALERT_TIMEOUT) {
                 enterMonitoring();
@@ -85,7 +86,7 @@ void EEWStateMachine::handleAlert() {
 // handleError
 // Runs unique error alert tone. TODO: Implement error alert tone.
 void EEWStateMachine::handleError() {
-        startErrorAlert();
+        alert.startErrorAlert();
 }
 
 
@@ -97,7 +98,7 @@ void EEWStateMachine::handleError() {
 void EEWStateMachine::enterAlert() {
   currState = State::ALERT;
   alertStartTime = millis();
-  startLocalAlert();
+  alert.startLocalAlert();
   lora.standby(); 
 }
 
@@ -105,12 +106,12 @@ void EEWStateMachine::enterAlert() {
 // Stops alert on device, restarts radio, and enters Monitoring
 void EEWStateMachine::enterMonitoring() {
   currState = State::MONITORING;
-  stopLocalAlert();
+  alert.stopLocalAlert();
   lora.startListen();
 }
 
 // Starts error alert tone and enters Error state
 void EEWStateMachine::enterError() {
   currState = State::ERROR;
-  startErrorAlert();
+  alert.startErrorAlert();
 }

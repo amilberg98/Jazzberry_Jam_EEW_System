@@ -21,7 +21,7 @@ public:
                      Radio& loraRef,
                      STALTA& staltaRef,
                      TauCPdEstimator& taucpdRef,
-                     Alert& alertRef );
+                     Alert& alertRef);
 
     void begin();
     void update();
@@ -61,7 +61,7 @@ private:
             uint32_t raw = analogRead(35);
             return (raw / 1000.0);
         } // Check battery via analogRead voltage divider
-        bool errorDetected() { return false; }
+        bool errorDetected();
 
 };
 

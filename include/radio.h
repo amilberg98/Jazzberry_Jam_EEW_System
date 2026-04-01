@@ -22,6 +22,8 @@ class Radio {
         void sleep();
         void standby();
 
+        bool hasError();
+
 
         private:
         SX1276* _radio;
@@ -29,6 +31,7 @@ class Radio {
         int _irq;
         int _rst;
         volatile int _receivedFlag;
+        bool errorFlag;
 
 
         static Radio* instance;

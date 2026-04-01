@@ -22,6 +22,7 @@ void EEWStateMachine::begin() {
 // update
 // Main switch statement for state machine, switching between appropriate handlers
 void EEWStateMachine::update() {
+        alert.update(); // Check for pending alerts
         switch(currState) {
                 case State::MONITORING:
                         handleMonitoring();
@@ -114,4 +115,8 @@ void EEWStateMachine::enterMonitoring() {
 void EEWStateMachine::enterError() {
   currState = State::ERROR;
   alert.startErrorAlert();
+}
+
+bool EEWStateMachine::errorDetected() {
+    return accel.hasError() || lora.hasError();
 }

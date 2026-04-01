@@ -11,6 +11,7 @@ Radio::Radio(int csPin, int irqPin, int rstPin) {
 
     _radio = new SX1276(new Module(_cs, _irq, _rst));
     _receivedFlag = false;
+    errorFlag = false;
 
     instance = this;
 }
@@ -29,6 +30,7 @@ int Radio::begin(float freq) {
     int state = _radio->begin(freq);
 
     if (state != RADIOLIB_ERR_NONE) {
+        errorFlag = true;
         return state;
     }
 
@@ -49,6 +51,10 @@ int Radio::begin(float freq) {
 // Sends data of length len over initialized LoRA
 int Radio::send(uint8_t* data, size_t len) {
     int state = _radio->transmit(data, len);
+
+    if (state != RADIOLIB_ERR_NONE) {
+        errorFlag = true;
+    }
 
     if (state == RADIOLIB_ERR_NONE) {
         _radio->startReceive();
@@ -80,6 +86,10 @@ String Radio::recv() {
     String str;
     int state = _radio->readData(str);
 
+    if (state != RADIOLIB_ERR_NONE) {
+        errorFlag = true;
+    }
+
     _radio->startReceive();
 
     if (state == RADIOLIB_ERR_NONE) {
@@ -101,4 +111,10 @@ void Radio::sleep() {
 // transmission to receiving
 void Radio::standby() {
     _radio->standby();
+}
+
+// hasError
+// Returns errorFlag indicating if LoRA module has any errors
+bool Radio::hasError() {
+    return errorFlag;
 }

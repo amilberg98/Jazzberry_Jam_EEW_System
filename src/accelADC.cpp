@@ -10,7 +10,8 @@ _zPin(zPin),
 _biasX(0),
 _biasY(0),
 _biasZ(0),
-_lastSampleTime(0) {}
+_lastSampleTime(0),
+errorFlag(false) {}
 
 // begin
 // Configures ADC. Assuming using ADC unit 1, 11dB attenuation (0-3.3V range),
@@ -19,13 +20,17 @@ void accelADC::begin() {
     analogReadResolution(12);
     analogSetAttenuation(ADC_11db);
 
-    esp_adc_cal_characterize(
+    esp_err_t ret = esp_adc_cal_characterize(
         ADC_UNIT_1,
         ADC_ATTEN_DB_11,
         ADC_WIDTH_BIT_12,
         1100, // 1.1V Vref
         &adc_chars
     );
+
+    if (ret != ESP_OK) {
+        errorFlag = true;
+    }
 
     calibrate();
 }
@@ -84,4 +89,10 @@ AccelData accelADC::read() {
     //Serial.printf("X: %.2f\n Y: %.2f\n Z: %.2f\n", sample.ax, sample.ay, sample.az);
 
     return sample;
+}
+
+// hasError
+// Returns errorFlag, indicating if accelerometer has raised any errors
+bool accelADC::hasError() {
+    return errorFlag;
 }

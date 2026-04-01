@@ -19,6 +19,7 @@ class accelADC {
     bool sampleReady();
 
     AccelData read();
+    bool hasError();
     const float SAMPLE_RATE_HZ = 200.0f;
 
     private:
@@ -27,6 +28,7 @@ class accelADC {
     int _xPin, _yPin, _zPin;
     uint32_t _biasX, _biasY, _biasZ;
     uint32_t _lastSampleTime;
+    bool errorFlag;
 
     // TODO: Adjust 200Hz sampling rate as necessary (should cover all earthquake waves up to 100Hz)
     const uint32_t SAMPLE_PERIOD_US = (1000000.0f / SAMPLE_RATE_HZ);

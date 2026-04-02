@@ -55,10 +55,16 @@ void EEWStateMachine::handleMonitoring() {
                 AccelData data = accel.read();
                 float filtered = filter.process(data.ay); // TODO: Use different axes? or only y?
                 taucpd.processSample(data.ay); // TODO above
+                
                 //Serial.printf("%.2f\n%.2f\n", data.ay, filtered);
                 alert.sendNetworkAlert();
                 delay(1000);
                 stalta.update(filtered);
+
+                // Broadcast values
+                char json[256];
+                sprintf(json, "{\"raw\": %.2f,\"filtered\": %.2f,\"sta\": %.2f,\"lta\": %.2f,\"tauc\": %.2f,\"pd\": %.2f}", data.ay, filtered, stalta.getSTA(), stalta.getLTA(), taucpd.getTauC(), taucpd.getPd());
+                lora.send((uint8_t*)json, strlen(json));
 
                 if (stalta.triggeredStatus()) {
                         enterAlert();

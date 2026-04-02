@@ -2,6 +2,7 @@
 #define EEWSTATEMACHINE_H
 
 #include <Arduino.h>
+#include "String.h"
 #include "accelADC.h"
 #include "biquad.h"
 #include "radio.h"

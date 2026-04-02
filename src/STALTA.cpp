@@ -57,5 +57,13 @@ bool STALTA::triggeredStatus() {
  return triggered; 
 }
 
+float STALTA::getSTA() {
+    return sta_sum / (float)STA_LEN;
+}
+
+float STALTA::getLTA() {
+    return lta_sum / (float)LTA_LEN;
+}
+
 
 

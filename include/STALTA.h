@@ -20,6 +20,8 @@ public:
   ~STALTA();
   bool update(float x); 
   bool triggeredStatus();
+  float getSTA();
+  float getLTA();
 
 
 private:

@@ -29,7 +29,7 @@ void Radio::setFlag() {
 int Radio::begin(float freq) {
     int state = _radio->begin(freq);
 
-    if (state != RADIOLIB_ERR_NONE) {
+    if (state != RADIOLIB_ERR_NONE && state != RADIOLIB_ERR_LORA_HEADER_DAMAGED) {
         errorFlag = true;
         return state;
     }
@@ -52,7 +52,7 @@ int Radio::begin(float freq) {
 int Radio::send(uint8_t* data, size_t len) {
     int state = _radio->transmit(data, len);
 
-    if (state != RADIOLIB_ERR_NONE) {
+    if (state != RADIOLIB_ERR_NONE && state != RADIOLIB_ERR_LORA_HEADER_DAMAGED) {
         errorFlag = true;
     }
 
@@ -86,7 +86,7 @@ String Radio::recv() {
     String str;
     int state = _radio->readData(str);
 
-    if (state != RADIOLIB_ERR_NONE) {
+    if (state != RADIOLIB_ERR_NONE && state != RADIOLIB_ERR_LORA_HEADER_DAMAGED) {
         errorFlag = true;
     }
 

@@ -43,18 +43,21 @@ void EEWStateMachine::update() {
 // Checks for errors, gets accelerometer sample, filters and appends to STA/LTA,
 // and if STA/LTA threshold exceeded triggers Alert state. Also checks for network
 // alert and for low battery.
-void EEWStateMachine::handleMonitoring() {
-        if (errorDetected()) {
-                enterError();
-                return;
-        }
+void EEWStateMachine::handleMonitoring() {        
+        // if (errorDetected()) {
+        //         enterError();
+        //         return;
+        // }
+
 
 
         if (accel.sampleReady()) {
                 AccelData data = accel.read();
                 float filtered = filter.process(data.ay); // TODO: Use different axes? or only y?
                 taucpd.processSample(data.ay); // TODO above
-                Serial.printf("%.2f\n%.2f\n", data.ay, filtered);
+                //Serial.printf("%.2f\n%.2f\n", data.ay, filtered);
+                alert.sendNetworkAlert();
+                delay(1000);
                 stalta.update(filtered);
 
                 if (stalta.triggeredStatus()) {

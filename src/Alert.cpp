@@ -1,10 +1,13 @@
 #include "Alert.h"
+#include <WiFi.h>
 
 // Constructor
 // Initializes reference to LoRA radio class and turns off buzzer
 Alert::Alert(Radio& radioRef, int buzzerPin, TauCPdEstimator& taucpdRef) : radio(radioRef), buzzerPin(buzzerPin), taucpd(taucpdRef) {
     pinMode(buzzerPin, OUTPUT);
     digitalWrite(buzzerPin, LOW);
+    senderId = WiFi.macAddress();
+    addSeen(senderId);
 }
 
 // startLocalAlert
@@ -35,7 +38,14 @@ void Alert::startErrorAlert() {
 void Alert::sendNetworkAlert() {
     float tau_c = taucpd.getTauC();
     float p_d = taucpd.getPd();
-    String message = "EARTHQUAKE ALERT: TauC=" + String(tau_c, 2) + " PD=" + String(p_d, 2);
+    sequenceNumber += 1;
+
+    String message = "EARTHQUAKE ALERT: ID=" + senderId + " SEQ=" + String(sequenceNumber);
+    message += " TauC=" + String(tau_c, 2);
+    message += " PD=" + String(p_d, 2);
+
+    addSeen(senderId);
+
     uint8_t data[message.length() + 1];
     message.getBytes(data, sizeof(data));
     radio.send(data, message.length());
@@ -51,11 +61,20 @@ void Alert::recvNetworkAlert() {
         if (received.length() > 0) {
             Serial.println("Network Alert Received: " + received);
             
-            // Extract TauC and PD from message
-            int tauCIndex = received.indexOf("TauC=");
+            int idIndex = received.indexOf("ID=");
+            int seqIndex = received.indexOf(" SEQ=");
+            int tauCIndex = received.indexOf(" TauC=");
             int pdIndex = received.indexOf(" PD=");
-            if (tauCIndex != -1 && pdIndex != -1) {
-                String tauCStr = received.substring(tauCIndex + 5, pdIndex);
+
+            if (idIndex != -1 && seqIndex != -1 && tauCIndex != -1 && pdIndex != -1) {
+                String sender = received.substring(idIndex + 3, seqIndex);
+                if (alreadySeen(sender)) {
+                    Serial.println("Duplicate alert ignored: " + sender);
+                    return;
+                }
+                addSeen(sender);
+
+                String tauCStr = received.substring(tauCIndex + 6, pdIndex);
                 String pdStr = received.substring(pdIndex + 4);
                 float tauC = tauCStr.toFloat();
                 float pd = pdStr.toFloat();
@@ -88,4 +107,23 @@ void Alert::update() {
         Serial.println("Local alert timeout, stopping alert");
         stopLocalAlert();
     }
+}
+
+bool Alert::alreadySeen(const String& id) {
+    unsigned long now = millis();
+    for (int i = 0; i < MAX_SEEN_IDS; ++i) {
+        if (seenIDs[i].id == id) {
+            if (now - seenIDs[i].timestamp <= SEEN_ID_WINDOW_MS) {
+                return true;
+            }
+            break;
+        }
+    }
+    return false;
+}
+
+void Alert::addSeen(const String& id) {
+    seenIDs[seenIdx].id = id;
+    seenIDs[seenIdx].timestamp = millis();
+    seenIdx = (seenIdx + 1) % MAX_SEEN_IDS;
 }

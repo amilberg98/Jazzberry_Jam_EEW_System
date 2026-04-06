@@ -28,10 +28,10 @@ void EEWStateMachine::update() {
                         handleMonitoring();
                         break;
                 case State::ALERT:
-                        handleMonitoring();
+                        handleAlert();
                         break;
                 case State::ERROR:
-                        handleMonitoring();
+                        handleError();
                         break;
 
         }
@@ -57,14 +57,18 @@ void EEWStateMachine::handleMonitoring() {
                 taucpd.processSample(data.ay); // TODO above
                 
                 //Serial.printf("%.2f\n%.2f\n", data.ay, filtered);
-                alert.sendNetworkAlert();
-                delay(1000);
+                //alert.sendNetworkAlert();
+                //delay(1000);
                 stalta.update(filtered);
 
-                // Broadcast values
-                char json[256];
-                sprintf(json, "{\"raw\": %.2f,\"filtered\": %.2f,\"sta\": %.2f,\"lta\": %.2f,\"tauc\": %.2f,\"pd\": %.2f}", data.ay, filtered, stalta.getSTA(), stalta.getLTA(), taucpd.getTauC(), taucpd.getPd());
-                lora.send((uint8_t*)json, strlen(json));
+                // Broadcast values periodically to avoid spamming LoRA
+                if (millis() - lastBroadcastTime >= MONITOR_BROADCAST_INTERVAL_MS) {
+                        char json[256];
+                        sprintf(json, "{\"raw\": %.2f,\"filtered\": %.2f,\"sta\": %.2f,\"lta\": %.2f,\"tauc\": %.2f,\"pd\": %.2f}", data.ay, filtered, stalta.getSTA(), stalta.getLTA(), taucpd.getTauC(), taucpd.getPd());
+                        Serial.printf("%s\n", json);
+                        lora.send((uint8_t*)json, strlen(json));
+                        lastBroadcastTime = millis();
+                }
 
                 if (stalta.triggeredStatus()) {
                         enterAlert();

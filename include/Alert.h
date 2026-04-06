@@ -37,6 +37,23 @@ private:
     // For local alert timeout
     unsigned long localAlertStartTime = 0;
     bool localAlertActive = false;
+
+    // Sender deduplication
+    static const int MAX_SEEN_IDS = 8;
+    static const unsigned long SEEN_ID_WINDOW_MS = 30000UL;
+
+    struct SeenEntry {
+        String id;
+        unsigned long timestamp;
+    };
+
+    SeenEntry seenIDs[MAX_SEEN_IDS];
+    int seenIdx = 0;
+    String senderId;
+    uint32_t sequenceNumber = 0;
+
+    bool alreadySeen(const String& id);
+    void addSeen(const String& id);
 };
 
 #endif

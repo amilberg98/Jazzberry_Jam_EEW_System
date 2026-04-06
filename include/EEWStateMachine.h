@@ -43,8 +43,10 @@ private:
     TauCPdEstimator& taucpd;
     Alert& alert;
 
-    int alertStartTime;
-    const int ALERT_TIMEOUT = 10000;
+    unsigned long alertStartTime = 0;
+    unsigned long lastBroadcastTime = 0;
+    static const unsigned long ALERT_TIMEOUT = 10000;
+    static const unsigned long MONITOR_BROADCAST_INTERVAL_MS = 5000;
 
     void handleMonitoring();
     void handleAlert();

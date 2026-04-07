@@ -5,7 +5,9 @@
 // Assigns references to components to local variables
 EEWStateMachine::EEWStateMachine(accelADC& accelRef, Biquad& filterRef, Radio& loraRef, STALTA& staltaRef, TauCPdEstimator& taucpdRef, Alert& alertRef):
 accel(accelRef),
-filter(filterRef),
+filterX(filterXRef),
+filterY(filterYRef),
+filterZ(filterZRef),
 lora(loraRef),
 stalta(staltaRef),
 taucpd(taucpdRef),
@@ -53,13 +55,21 @@ void EEWStateMachine::handleMonitoring() {
 
         if (accel.sampleReady()) {
                 AccelData data = accel.read();
-                float filtered = filter.process(data.ay); // TODO: Use different axes? or only y?
-                taucpd.processSample(data.ay); // TODO above
+
+                // Filter each axis
+                float fx = filterX.process(data.ax);
+                float fy = filterY.process(data.ay);
+                float fz = filterZ.process(data.az);
+
+                // Compute and use vector magnitude of acceleration on all axes
+                float magnitude = sqrtf(fx*fx + fy*fy + fz*fz);
                 
+                taucpd.processSample(magnitude);
+                stalta.update(magnitude);
+
                 //Serial.printf("%.2f\n%.2f\n", data.ay, filtered);
                 //alert.sendNetworkAlert();
                 //delay(1000);
-                stalta.update(filtered);
 
                 // Broadcast values periodically to avoid spamming LoRA
                 if (millis() - lastBroadcastTime >= MONITOR_BROADCAST_INTERVAL_MS) {

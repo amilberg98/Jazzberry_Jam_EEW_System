@@ -18,7 +18,9 @@ class EEWStateMachine
 public:
 
     EEWStateMachine(accelADC& accelRef,
-                     Biquad& filterRef,
+                     Biquad& filterXRef,
+                     Biquad& filterYRef,
+                     Biquad& filterZRef,
                      Radio& loraRef,
                      STALTA& staltaRef,
                      TauCPdEstimator& taucpdRef,
@@ -37,7 +39,9 @@ private:
     State currState;
 
     accelADC& accel;
-    Biquad& filter;
+    Biquad& filterX;
+    Biquad& filterY;
+    Biquad& filterZ;
     Radio& lora;
     STALTA& stalta;
     TauCPdEstimator& taucpd;

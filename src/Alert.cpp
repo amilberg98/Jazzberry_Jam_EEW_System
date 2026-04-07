@@ -14,6 +14,7 @@ Alert::Alert(Radio& radioRef, int buzzerPin, TauCPdEstimator& taucpdRef) : radio
 // Plays buzzer noise and enables red LED for local alert
 void Alert::startLocalAlert() {
     // TODO turn on colored LED too like red?
+    // TODO: Use tone(buzzerPin, EARTHQUAKE_FREQ) with passive buzzer for unique alert
     digitalWrite(buzzerPin, HIGH);
     localAlertStartTime = millis();
     localAlertActive = true;
@@ -29,7 +30,8 @@ void Alert::stopLocalAlert() {
 // startErrorAlert
 // Plays buzzer noise and enables yellow LED for error alert
 void Alert::startErrorAlert() {
-        // TODO turn on different colored LED
+    // TODO turn on different colored LED
+    // TODO: Use tone(buzzerPin, ERROR_FREQ) with passive buzzer for unique alert
     digitalWrite(buzzerPin, HIGH); 
 }
 
@@ -107,6 +109,21 @@ void Alert::update() {
         Serial.println("Local alert timeout, stopping alert");
         stopLocalAlert();
     }
+    // TODO use below with passive buzzer
+    // if (localAlertActive) {
+    //     unsigned long now = millis();
+    //     if (now - localAlertStartTime > LOCAL_ALERT_DURATION_MS) {
+    //         stopLocalAlert();
+    //     } else {
+    //         // Alternate tone on/off every BEEP_INTERVAL_MS for urgency
+    //         bool beepOn = ((now - localAlertStartTime) / BEEP_INTERVAL_MS) % 2 == 0;
+    //         if (beepOn) {
+    //             tone(buzzerPin, EARTHQUAKE_FREQ);
+    //         } else {
+    //             noTone(buzzerPin);
+    //         }
+    //     }
+    // }
 }
 
 bool Alert::alreadySeen(const String& id) {

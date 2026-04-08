@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <stdexcept>
+#include <algorithm>
 
 namespace {
 constexpr float PI_F = 3.14159265358979323846f;
@@ -66,15 +67,6 @@ void TauCPdEstimator::reset() {
 }
 
 void TauCPdEstimator::processSample(float acc_sample) {
-    // Remove oldest sample from running sums if window already full
-    if (count_ == window_samples_) {
-        const float old_v = vel_buf_[idx_];
-        const float old_d = disp_buf_[idx_];
-
-        sum_v2_ -= old_v * old_v;
-        sum_d2_ -= old_d * old_d;
-    }
-
     // Trapezoidal integration: acceleration -> velocity
     const float new_velocity =
         velocity_ + 0.5f * (acc_sample + prev_acc_) * dt_;
@@ -86,10 +78,6 @@ void TauCPdEstimator::processSample(float acc_sample) {
     // Store in ring buffer
     vel_buf_[idx_] = new_velocity;
     disp_buf_[idx_] = new_displacement;
-
-    // Add newest sample to running sums
-    sum_v2_ += new_velocity * new_velocity;
-    sum_d2_ += new_displacement * new_displacement;
 
     // Advance ring buffer index
     ++idx_;
@@ -107,21 +95,29 @@ void TauCPdEstimator::processSample(float acc_sample) {
     velocity_ = new_velocity;
     displacement_ = new_displacement;
 
-    // Compute P_d = max absolute displacement over current window
-    float pd = 0.0f;
-    for (std::uint32_t i = 0; i < count_; ++i) {
-        const float ad = absfLocal(disp_buf_[i]);
-        if (ad > pd) {
-            pd = ad;
-        }
-    }
-    p_d_ = pd;
+    // Detrend and recompute sums and metrics
+    if (count_ > 0) {
+        float min_vel = *std::min_element(vel_buf_.begin(), vel_buf_.begin() + count_);
+        float min_disp = *std::min_element(disp_buf_.begin(), disp_buf_.begin() + count_);
 
-    // Compute tau_c = 2*pi*sqrt(sum(d^2)/sum(v^2))
-    if (sum_v2_ > 1e-12f && sum_d2_ >= 0.0f) {
-        tau_c_ = 2.0f * PI_F * std::sqrt(sum_d2_ / sum_v2_);
-    } else {
-        tau_c_ = 0.0f;
+        sum_v2_ = 0.0f;
+        sum_d2_ = 0.0f;
+        p_d_ = 0.0f;
+
+        for (std::uint32_t i = 0; i < count_; ++i) {
+            float v = vel_buf_[i] - min_vel;
+            float d = disp_buf_[i] - min_disp;
+            sum_v2_ += v * v;
+            sum_d2_ += d * d;
+            float ad = absfLocal(d);
+            if (ad > p_d_) p_d_ = ad;
+        }
+
+        if (sum_v2_ > 1e-12f) {
+            tau_c_ = 2.0f * PI_F * std::sqrt(sum_d2_ / sum_v2_);
+        } else {
+            tau_c_ = 0.0f;
+        }
     }
 }
 

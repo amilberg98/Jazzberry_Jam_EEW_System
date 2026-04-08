@@ -46,10 +46,10 @@ void EEWStateMachine::update() {
 // and if STA/LTA threshold exceeded triggers Alert state. Also checks for network
 // alert and for low battery.
 void EEWStateMachine::handleMonitoring() {        
-        // if (errorDetected()) {
-        //         enterError();
-        //         return;
-        // }
+        if (errorDetected()) {
+                enterError();
+                return;
+        }
 
 
 
@@ -62,33 +62,28 @@ void EEWStateMachine::handleMonitoring() {
                 float fz = filterZ.process(data.az);
 
                 // Compute and use vector magnitude of acceleration on all axes
-                float magnitude = sqrtf(fx*fx + fy*fy + fz*fz);
+                float accel_vec = sqrtf(fx*fx + fy*fy + fz*fz);
                 
-                // TODO fix tauc/PD accumulating indefinitely (alt: maybe just use sta/lta for trigger?)
-                taucpd.processSample(magnitude);
-                stalta.update(magnitude);
+                // Only use one axis for TauC/Pd to prevent infinite accumulation
+                taucpd.processSample(fz);
+                stalta.update(accel_vec);
 
-                //Serial.printf("%.2f\n%.2f\n", data.ay, filtered);
-                //alert.sendNetworkAlert();
-                //delay(1000);
-
-
-
+                // Check for local alert trigger: STA/LTA must be triggered
+                // TODO: Maybe use tauc/pd in trigger also?
+                if (millis() - lastAlertEndTime > 10000 && stalta.triggeredStatus() /*&& taucpd.getTauC() > 3.0f && taucpd.getPd() > 0.21f*/) {
+                        enterAlert();
+                        return;
+                }
+        
                 // Broadcast values periodically to avoid spamming LoRA
                 if (millis() - lastBroadcastTime >= MONITOR_BROADCAST_INTERVAL_MS) {
                         char json[256];
-                        sprintf(json, "{\"raw\": %.2f,\"filtered\": %.2f,\"sta\": %.2f,\"lta\": %.2f,\"tauc\": %.2f,\"pd\": %.2f}", data.ay, fy, stalta.getSTA(), stalta.getLTA(), taucpd.getTauC(), taucpd.getPd());
+                        sprintf(json, "{\"accel_vec\": %.2f,\"filteredX\": %.2f,\"filteredY\": %.2f,\"filteredZ\": %.2f,\"sta\": %.2f,\"lta\": %.2f,\"tauc\": %.2f,\"pd\": %.2f}", accel_vec, fx, fy, fz, stalta.getSTA(), stalta.getLTA(), taucpd.getTauC(), taucpd.getPd());
                         Serial.printf("%s\n", json);
+                        Serial.printf("Ratio STATUS: %d\n", stalta.triggeredStatus());
                         lora.send((uint8_t*)json, strlen(json));
                         lastBroadcastTime = millis();
                 }
-
-                // TODO fix this function/stalta trigger, accumulating right just not tirggering right
-                // if (stalta.triggeredStatus()) {
-                //         Serial.print
-                //         enterAlert();
-                //         return;
-                // }
         }
 
         alert.recvNetworkAlert();
@@ -99,7 +94,6 @@ void EEWStateMachine::handleMonitoring() {
 // Checks for errors, sends LoRA network alert for timeout amount of time.
 // TODO: Add functionality to triger local alert.
 void EEWStateMachine::handleAlert() {
-        Serial.printf("ALERT\n");
         if (errorDetected()) {
                 enterError();
                 return;
@@ -135,6 +129,7 @@ void EEWStateMachine::enterAlert() {
 // Stops alert on device, restarts radio, and enters Monitoring
 void EEWStateMachine::enterMonitoring() {
   currState = State::MONITORING;
+  lastAlertEndTime = millis();
   alert.stopLocalAlert();
   lora.startListen();
 }

@@ -40,10 +40,6 @@ bool STALTA::update(float x) {
     const float lta = lta_sum / (float)LTA_LEN;
     ratio = sta / (lta + ZERO);
 
-    // if (samples_seen % 100 == 0)
-    //     Serial.printf("STA: %.2f\n LTA: %.2f\n", sta, lta);
-
-
     // Hysteresis
     if (!triggered && ratio >= TRIG_ON) 
         triggered = true;

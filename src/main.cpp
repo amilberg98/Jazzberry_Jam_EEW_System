@@ -24,7 +24,7 @@ Biquad filterX, filterY, filterZ;
 STALTA stalta;
 TauCPdEstimator taucpd(accel.SAMPLE_RATE_HZ, TAUCPD_SAMPLE_WINDOW); // TODO maybe modify sample rate
 Alert alert(radio, BUZZER_PIN, taucpd); // Buzzer on pin 13
-EEWStateMachine eews(accel, filter, radio, stalta, taucpd, alert);
+EEWStateMachine eews(accel, filterX, filterY, filterZ, radio, stalta, taucpd, alert);
 
 // Initializing each portion of EEWS
 void setup() {

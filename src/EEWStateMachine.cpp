@@ -3,7 +3,7 @@
 
 // Constructor
 // Assigns references to components to local variables
-EEWStateMachine::EEWStateMachine(accelADC& accelRef, Biquad& filterRef, Radio& loraRef, STALTA& staltaRef, TauCPdEstimator& taucpdRef, Alert& alertRef):
+EEWStateMachine::EEWStateMachine(accelADC& accelRef, Biquad& filterXRef, Biquad& filterYRef, Biquad& filterZRef, Radio& loraRef, STALTA& staltaRef, TauCPdEstimator& taucpdRef, Alert& alertRef):
 accel(accelRef),
 filterX(filterXRef),
 filterY(filterYRef),
@@ -64,6 +64,7 @@ void EEWStateMachine::handleMonitoring() {
                 // Compute and use vector magnitude of acceleration on all axes
                 float magnitude = sqrtf(fx*fx + fy*fy + fz*fz);
                 
+                // TODO fix tauc/PD accumulating indefinitely (alt: maybe just use sta/lta for trigger?)
                 taucpd.processSample(magnitude);
                 stalta.update(magnitude);
 
@@ -71,19 +72,23 @@ void EEWStateMachine::handleMonitoring() {
                 //alert.sendNetworkAlert();
                 //delay(1000);
 
+
+
                 // Broadcast values periodically to avoid spamming LoRA
                 if (millis() - lastBroadcastTime >= MONITOR_BROADCAST_INTERVAL_MS) {
                         char json[256];
-                        sprintf(json, "{\"raw\": %.2f,\"filtered\": %.2f,\"sta\": %.2f,\"lta\": %.2f,\"tauc\": %.2f,\"pd\": %.2f}", data.ay, filtered, stalta.getSTA(), stalta.getLTA(), taucpd.getTauC(), taucpd.getPd());
+                        sprintf(json, "{\"raw\": %.2f,\"filtered\": %.2f,\"sta\": %.2f,\"lta\": %.2f,\"tauc\": %.2f,\"pd\": %.2f}", data.ay, fy, stalta.getSTA(), stalta.getLTA(), taucpd.getTauC(), taucpd.getPd());
                         Serial.printf("%s\n", json);
                         lora.send((uint8_t*)json, strlen(json));
                         lastBroadcastTime = millis();
                 }
 
-                if (stalta.triggeredStatus()) {
-                        enterAlert();
-                        return;
-                }
+                // TODO fix this function/stalta trigger, accumulating right just not tirggering right
+                // if (stalta.triggeredStatus()) {
+                //         Serial.print
+                //         enterAlert();
+                //         return;
+                // }
         }
 
         alert.recvNetworkAlert();

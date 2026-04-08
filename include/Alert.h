@@ -24,7 +24,7 @@ private:
     TauCPdEstimator& taucpd;
 
     // Thresholds for triggering local alert on received values
-    const float TAUC_THRESHOLD = 1.0f;
+    const float TAUC_THRESHOLD = 8.0f;
     const float PD_THRESHOLD = 0.5f;
 
     // Timeout for local alerts

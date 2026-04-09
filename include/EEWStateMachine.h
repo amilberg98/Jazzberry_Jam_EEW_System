@@ -51,7 +51,7 @@ private:
     unsigned long lastBroadcastTime = 0;
     unsigned long lastAlertEndTime = 0;
     static const unsigned int ALERT_TIMEOUT = 10000;
-    static const unsigned long MONITOR_BROADCAST_INTERVAL_MS = 1000;
+    static const unsigned long MONITOR_BROADCAST_INTERVAL_MS = 0;
 
     void handleMonitoring();
     void handleAlert();

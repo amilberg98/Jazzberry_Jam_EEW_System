@@ -52,6 +52,17 @@ private:
     unsigned long lastAlertEndTime = 0;
     static const unsigned int ALERT_TIMEOUT = 10000;
     static const unsigned long MONITOR_BROADCAST_INTERVAL_MS = 0;
+    const unsigned long EVAL_WINDOW_MS = 2000;
+    const float TAUC_THRESH = 3.0f;
+    const float PD_THRESH = 0.21f;
+
+    bool event_active = false;
+    unsigned long trigger_time = 0;
+    float max_tauC = 0.0f;
+    float max_Pd = 0.0f;
+
+
+
 
     void handleMonitoring();
     void handleAlert();

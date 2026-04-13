@@ -64,6 +64,9 @@ void EEWStateMachine::handleMonitoring() {
                 float accel_vec = sqrtf(fx*fx + fy*fy + fz*fz);
                 
                 // Only use one axis for TauC/Pd to prevent infinite accumulation
+                // TODO: try this highpass
+                
+                
                 taucpd.processSample(fz);
                 stalta.update(accel_vec);
 
@@ -102,7 +105,7 @@ void EEWStateMachine::handleMonitoring() {
                 // TODO: raw_vec is just unfiltered z value rn, need to change ALSO remvoe the whole block from alert()
                 if (millis() - lastBroadcastTime >= MONITOR_BROADCAST_INTERVAL_MS) {
                         char json[256];
-                        sprintf(json, "{\"raw_vec\": %.2f, \"accel_vec\": %.2f,\"filteredX\": %.2f,\"filteredY\": %.2f,\"filteredZ\": %.2f,\"sta\": %.2f,\"lta\": %.2f,\"tauc\": %.2f,\"pd\": %.2f}", raw_vec, accel_vec, fx, fy, fz, stalta.getSTA(), stalta.getLTA(), taucpd.getTauC(), taucpd.getPd());
+                        sprintf(json, "MONITORING {\"raw_vec\": %.2f, \"accel_vec\": %.2f,\"filteredX\": %.2f,\"filteredY\": %.2f,\"filteredZ\": %.2f,\"sta\": %.2f,\"lta\": %.2f,\"tauc\": %.2f,\"pd\": %.2f, \"ratio\": %.2f}", raw_vec, accel_vec, fx, fy, fz, stalta.getSTA(), stalta.getLTA(), taucpd.getTauC(), taucpd.getPd(), stalta.ratio);
                         Serial.printf("%s\n", json);
                         //Serial.printf("Ratio STATUS: %d\n", stalta.triggeredStatus());
                         lora.send((uint8_t*)json, strlen(json));
@@ -142,10 +145,10 @@ void EEWStateMachine::handleAlert() {
                 // Broadcast values periodically to avoid spamming LoRA
                 if (millis() - lastBroadcastTime >= MONITOR_BROADCAST_INTERVAL_MS) {
                         char json[256];
-                        sprintf(json, "{\"raw_vec\": %.2f, \"accel_vec\": %.2f,\"filteredX\": %.2f,\"filteredY\": %.2f,\"filteredZ\": %.2f,\"sta\": %.2f,\"lta\": %.2f,\"tauc\": %.2f,\"pd\": %.2f}", raw_vec, accel_vec, fx, fy, fz, stalta.getSTA(), stalta.getLTA(), taucpd.getTauC(), taucpd.getPd());
+                        sprintf(json, "ALERT {\"raw_vec\": %.2f, \"accel_vec\": %.2f,\"filteredX\": %.2f,\"filteredY\": %.2f,\"filteredZ\": %.2f,\"sta\": %.2f,\"lta\": %.2f,\"tauc\": %.2f,\"pd\": %.2f}", raw_vec, accel_vec, fx, fy, fz, stalta.getSTA(), stalta.getLTA(), taucpd.getTauC(), taucpd.getPd());
                         Serial.printf("%s\n", json);
                         lora.send((uint8_t*)json, strlen(json));
-                        lastBroadcastTime = millis();
+                        //lastBroadcastTime = millis();
                 }
         }
 
@@ -178,6 +181,7 @@ void EEWStateMachine::enterAlert() {
 // enterMonitoring
 // Stops alert on device, restarts radio, and enters Monitoring
 void EEWStateMachine::enterMonitoring() {
+  Serial.println("here\n");
   currState = State::MONITORING;
   lastAlertEndTime = millis();
   alert.stopLocalAlert();

@@ -53,8 +53,8 @@ private:
     static const unsigned int ALERT_TIMEOUT = 10000;
     static const unsigned long MONITOR_BROADCAST_INTERVAL_MS = 0;
     const unsigned long EVAL_WINDOW_MS = 2000;
-    const float TAUC_THRESH = 3.0f;
-    const float PD_THRESH = 0.21f;
+    const float TAUC_THRESH = 1.0f;
+    const float PD_THRESH = 0.0f;
 
     bool event_active = false;
     unsigned long trigger_time = 0;

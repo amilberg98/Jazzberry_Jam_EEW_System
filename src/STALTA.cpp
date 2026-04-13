@@ -41,10 +41,12 @@ bool STALTA::update(float x) {
     ratio = sta / (lta + ZERO);
 
     // Hysteresis
-    if (!triggered && ratio >= TRIG_ON) 
+    if (!triggered && ratio >= TRIG_ON) {
         triggered = true;
-    else if (triggered && ratio <= TRIG_OFF) 
+    }
+    else if (triggered && ratio <= TRIG_OFF) {
         triggered = false;
+    }
 
     return triggered;
 }

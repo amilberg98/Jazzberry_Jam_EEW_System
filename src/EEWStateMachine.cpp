@@ -62,19 +62,11 @@ void EEWStateMachine::handleMonitoring() {
 
                 // Compute and use vector magnitude of acceleration on all axes
                 float accel_vec = sqrtf(fx*fx + fy*fy + fz*fz);
-                
-                // Only use one axis for TauC/Pd to prevent infinite accumulation
-                // TODO: try this highpass
-                
-                
-                taucpd.processSample(fz);
+
+                // Noise floor
+                if (accel_vec < 0.03f) return;
                 stalta.update(accel_vec);
 
-                // OLD ALERT LOGIC
-                // if (millis() - lastAlertEndTime > 10000 && stalta.triggeredStatus()) {
-                //         enterAlert();
-                //         return;
-                // }
 
                 // TWO-PHASE ALERT LOGIC
                 // Phase 1: Confirm STA/LTA above threshold for 0.3sec
@@ -93,21 +85,25 @@ void EEWStateMachine::handleMonitoring() {
                                 alert_phase = IDLE;
                         }
                         else if (now - trigger_time >= STA_LTA_CONFIRM_MS) {
-                                // Phase 1 complete, move to phase 2: collect tauc/Pd
+                                // Phase 1 complete, move to phase 2: collect 3sec of tauc/Pd
                                 alert_phase = COLLECTING_TAUCPD;
+                                taucpd.reset();
                                 max_tauC = 0.0f;
                                 max_Pd = 0.0f;
                         }
                 }
                 
                 if (alert_phase == COLLECTING_TAUCPD) {
+                        taucpd.processSample(fz); 
                         float tau = taucpd.getTauC();
                         float pd  = taucpd.getPd();
+                        //Serial.printf("COLLECTING: MaxTauC: %.6f MaxPd: %.6f\r\n", tau, pd);
 
                         if (tau > max_tauC) max_tauC = tau;
                         if (pd  > max_Pd)   max_Pd   = pd;
                         
                         if (now - trigger_time >= (STA_LTA_CONFIRM_MS + TAUCPD_EVAL_MS)) {
+                                //Serial.print("------------ENDING COLLECT-------------\n");
                                 // Phase 2 complete, check if both thresholds exceeded
                                 if (max_tauC > TAUC_THRESH && max_Pd > PD_THRESH) {
                                         enterAlert();
@@ -120,9 +116,8 @@ void EEWStateMachine::handleMonitoring() {
                 // TODO: raw_vec is just unfiltered z value rn, need to change ALSO remvoe the whole block from alert()
                 if (millis() - lastBroadcastTime >= MONITOR_BROADCAST_INTERVAL_MS) {
                         char json[256];
-                        sprintf(json, "MONITORING {\"raw_vec\": %.2f, \"accel_vec\": %.2f,\"filteredX\": %.2f,\"filteredY\": %.2f,\"filteredZ\": %.2f,\"sta\": %.2f,\"lta\": %.2f,\"tauc\": %.2f,\"pd\": %.2f, \"ratio\": %.2f}", raw_vec, accel_vec, fx, fy, fz, stalta.getSTA(), stalta.getLTA(), taucpd.getTauC(), taucpd.getPd(), stalta.ratio);
+                        sprintf(json, "{\"raw_vec\": %.6f, \"accel_vec\": %.6f,\"filteredX\": %.2f,\"filteredY\": %.2f,\"filteredZ\": %.2f,\"sta\": %.6f,\"lta\": %.6f,\"tauc\": %.6f,\"pd\": %.6f, \"ratio\": %.2f}", raw_vec, accel_vec, fx, fy, fz, stalta.getSTA(), stalta.getLTA(), taucpd.getTauC(), taucpd.getPd(), stalta.ratio);
                         Serial.printf("%s\n", json);
-                        //Serial.printf("Ratio STATUS: %d\n", stalta.triggeredStatus());
                         lora.send((uint8_t*)json, strlen(json));
                         lastBroadcastTime = millis();
                 }
@@ -158,10 +153,10 @@ void EEWStateMachine::handleAlert() {
                 stalta.update(accel_vec);
 
                 // Broadcast values periodically to avoid spamming LoRA
+                // this part lastBroadcastTime ignored because messes up main logic to end alert
                 if (millis() - lastBroadcastTime >= MONITOR_BROADCAST_INTERVAL_MS) {
                         char json[256];
-                        sprintf(json, "ALERT {\"raw_vec\": %.2f, \"accel_vec\": %.2f,\"filteredX\": %.2f,\"filteredY\": %.2f,\"filteredZ\": %.2f,\"sta\": %.2f,\"lta\": %.2f,\"tauc\": %.2f,\"pd\": %.2f}", raw_vec, accel_vec, fx, fy, fz, stalta.getSTA(), stalta.getLTA(), taucpd.getTauC(), taucpd.getPd());
-                        Serial.printf("%s\n", json);
+                        sprintf(json, "{\"raw_vec\": %.6f, \"accel_vec\": %.6f,\"filteredX\": %.2f,\"filteredY\": %.2f,\"filteredZ\": %.2f,\"sta\": %.6f,\"lta\": %.6f,\"tauc\": %.6f,\"pd\": %.6f, \"ratio\": %.2f}", raw_vec, accel_vec, fx, fy, fz, stalta.getSTA(), stalta.getLTA(), taucpd.getTauC(), taucpd.getPd(), stalta.ratio);                        Serial.printf("%s\n", json);
                         lora.send((uint8_t*)json, strlen(json));
                         //lastBroadcastTime = millis();
                 }
@@ -170,6 +165,7 @@ void EEWStateMachine::handleAlert() {
         alert.sendNetworkAlert();
 
         if (millis() - alertStartTime > ALERT_TIMEOUT) {
+                stalta.ratio = 0.0f; // Reset STA/LTA to avoid same alarm twice
                 enterMonitoring();
         }
 }

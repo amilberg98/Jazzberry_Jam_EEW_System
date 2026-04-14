@@ -56,8 +56,8 @@ private:
     // Two-phase alert validation
     const unsigned long STA_LTA_CONFIRM_MS = 300;   // Wait 0.3sec for STA/LTA confirmation
     const unsigned long TAUCPD_EVAL_MS = 2500;       // Then collect 2.5sec of tauc/Pd
-    const float TAUC_THRESH = 1.0f;
-    const float PD_THRESH = 0.0f;
+    const float TAUC_THRESH = 0.05f;
+    const float PD_THRESH = 0.000025f;
 
     enum AlertPhase {
         IDLE,                  // Waiting for initial STA/LTA trigger

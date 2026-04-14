@@ -52,11 +52,20 @@ private:
     unsigned long lastAlertEndTime = 0;
     static const unsigned int ALERT_TIMEOUT = 10000;
     static const unsigned long MONITOR_BROADCAST_INTERVAL_MS = 0;
-    const unsigned long EVAL_WINDOW_MS = 2000;
+    
+    // Two-phase alert validation
+    const unsigned long STA_LTA_CONFIRM_MS = 300;   // Wait 0.3sec for STA/LTA confirmation
+    const unsigned long TAUCPD_EVAL_MS = 2500;       // Then collect 2.5sec of tauc/Pd
     const float TAUC_THRESH = 1.0f;
     const float PD_THRESH = 0.0f;
 
-    bool event_active = false;
+    enum AlertPhase {
+        IDLE,                  // Waiting for initial STA/LTA trigger
+        CONFIRMING_STA_LTA,    // STA/LTA above threshold, confirming for 0.3sec
+        COLLECTING_TAUCPD     // Past 0.3sec, now collecting tauc/Pd for 2.5sec
+    };
+    
+    AlertPhase alert_phase = IDLE;
     unsigned long trigger_time = 0;
     float max_tauC = 0.0f;
     float max_Pd = 0.0f;

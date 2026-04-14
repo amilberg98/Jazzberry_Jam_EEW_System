@@ -76,29 +76,44 @@ void EEWStateMachine::handleMonitoring() {
                 //         return;
                 // }
 
-                // NEW ALERT LOGIC
+                // TWO-PHASE ALERT LOGIC
+                // Phase 1: Confirm STA/LTA above threshold for 0.3sec
+                // Phase 2: Evaluate tauc/Pd during the 2.5sec window after phase 1
                 unsigned long now = millis();
-                if (!event_active && (now - lastAlertEndTime > 10000) && stalta.triggeredStatus()) {
-                        event_active = true;
+                
+                if (alert_phase == IDLE && (now - lastAlertEndTime > 10000) && stalta.triggeredStatus()) {
+                        // Start phase 1: STA/LTA confirmation
+                        alert_phase = CONFIRMING_STA_LTA;
                         trigger_time = now;
-                        max_tauC = 0.0f;
-                        max_Pd   = 0.0f;
                 }
-                if (event_active) {
+                
+                if (alert_phase == CONFIRMING_STA_LTA) {
+                        if (!stalta.triggeredStatus()) {
+                                // STA/LTA dropped below threshold, restart
+                                alert_phase = IDLE;
+                        }
+                        else if (now - trigger_time >= STA_LTA_CONFIRM_MS) {
+                                // Phase 1 complete, move to phase 2: collect tauc/Pd
+                                alert_phase = COLLECTING_TAUCPD;
+                                max_tauC = 0.0f;
+                                max_Pd = 0.0f;
+                        }
+                }
+                
+                if (alert_phase == COLLECTING_TAUCPD) {
                         float tau = taucpd.getTauC();
                         float pd  = taucpd.getPd();
 
                         if (tau > max_tauC) max_tauC = tau;
                         if (pd  > max_Pd)   max_Pd   = pd;
-                }
-                if (now - trigger_time >= EVAL_WINDOW_MS) {
-                        if (max_tauC > TAUC_THRESH && max_Pd > PD_THRESH) {
-                                enterAlert();
-                                event_active = false;
-                                return;
+                        
+                        if (now - trigger_time >= (STA_LTA_CONFIRM_MS + TAUCPD_EVAL_MS)) {
+                                // Phase 2 complete, check if both thresholds exceeded
+                                if (max_tauC > TAUC_THRESH && max_Pd > PD_THRESH) {
+                                        enterAlert();
+                                }
+                                alert_phase = IDLE;
                         }
-
-                        event_active = false;
                 }
         
                 // Broadcast values periodically to avoid spamming LoRA

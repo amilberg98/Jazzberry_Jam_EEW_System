@@ -18,9 +18,7 @@ class EEWStateMachine
 public:
 
     EEWStateMachine(accelADC& accelRef,
-                     Biquad& filterXRef,
-                     Biquad& filterYRef,
-                     Biquad& filterZRef,
+                     Biquad& filterRef,
                      Radio& loraRef,
                      STALTA& staltaRef,
                      TauCPdEstimator& taucpdRef,
@@ -28,6 +26,8 @@ public:
 
     void begin();
     void update();
+
+   // void runFilterLog(int numSamples = 1000);
 
 private:
     enum class State
@@ -39,9 +39,7 @@ private:
     State currState;
 
     accelADC& accel;
-    Biquad& filterX;
-    Biquad& filterY;
-    Biquad& filterZ;
+    Biquad& filter;
     Radio& lora;
     STALTA& stalta;
     TauCPdEstimator& taucpd;
@@ -52,12 +50,13 @@ private:
     unsigned long lastAlertEndTime = 0;
     static const unsigned int ALERT_TIMEOUT = 10000;
     static const unsigned long MONITOR_BROADCAST_INTERVAL_MS = 0;
+    unsigned long taucpd_window_start = 0;
     
     // Two-phase alert validation
     const unsigned long STA_LTA_CONFIRM_MS = 300;   // Wait 0.3sec for STA/LTA confirmation
-    const unsigned long TAUCPD_EVAL_MS = 2500;       // Then collect 2.5sec of tauc/Pd
-    const float TAUC_THRESH = 0.05f;
-    const float PD_THRESH = 0.000025f;
+    const unsigned long TAUCPD_EVAL_MS = 2000;       // Then collect 2.5sec of tauc/Pd
+    const float TAUC_THRESH = 0.08f;
+    const float PD_THRESH = 0.000020f;
 
     enum AlertPhase {
         IDLE,                  // Waiting for initial STA/LTA trigger

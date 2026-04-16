@@ -5,6 +5,10 @@
 #include "radio.h"
 #include "taucpd.h"
 
+const int BUZZER_PIN = 13;
+const int ERR_PIN = 14;
+const int ALERT_PIN = 2;
+
 // Handles device and broadcasted (LoRA) alerts, and 
 // local error alert.
 class Alert {

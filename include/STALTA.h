@@ -9,8 +9,8 @@
 
 const int STA_LEN = 40;        // samples
 const int LTA_LEN = 800;       // samples (must be > sta_len)
-const float TRIG_ON = 3.0f;     // trigger when ratio >= trig_on
-const float TRIG_OFF = 1.5f;    // release when ratio <= trig_off (hysteresis)
+const float TRIG_ON = 0.5f;     // trigger when ratio >= trig_on
+const float TRIG_OFF = 0.25f;    // release when ratio <= trig_off (hysteresis)
 const float ZERO = 0.0001f;       // prevent divide-by-zero
 const int MIN_LTA_FILL = LTA_LEN / 10;   // wait until LTA is "warmed up"
 

@@ -15,29 +15,32 @@ const int LORA_CS_PIN = 18;
 const int LORA_IRQ_PIN = 26;
 const int LORA_RST_PIN = 23;
 const float TAUCPD_SAMPLE_WINDOW = 3.0f;
-const int BUZZER_PIN = 13;
 
 // Class constructors
 accelADC accel(X_PIN, Y_PIN, Z_PIN);
 Radio radio(LORA_CS_PIN, LORA_IRQ_PIN, LORA_RST_PIN);
-Biquad filterX, filterY, filterZ;
+Biquad filter;
 STALTA stalta;
 TauCPdEstimator taucpd(accel.SAMPLE_RATE_HZ, TAUCPD_SAMPLE_WINDOW); // TODO maybe modify sample rate
 Alert alert(radio, BUZZER_PIN, taucpd); // Buzzer on pin 13
-EEWStateMachine eews(accel, filterX, filterY, filterZ, radio, stalta, taucpd, alert);
+EEWStateMachine eews(accel, filter, radio, stalta, taucpd, alert);
 
 // Initializing each portion of EEWS
 void setup() {
   Serial.begin(9600);
   accel.begin();
 
-  filterX.reset();
-  filterY.reset();
-  filterZ.reset();
+  filter.reset();
 
   radio.begin(433.0);
   taucpd.reset();
   eews.begin();
+
+  delay(2000);
+  pinMode(BUZZER_PIN, OUTPUT);
+  pinMode(ALERT_PIN, OUTPUT);
+  pinMode(ERR_PIN, OUTPUT);
+  //eews.runFilterLog(1000);
 }
 
 // Running main EEWS state machine

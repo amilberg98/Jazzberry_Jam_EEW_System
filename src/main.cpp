@@ -27,7 +27,7 @@ EEWStateMachine eews(accel, filter, radio, stalta, taucpd, alert);
 
 // Initializing each portion of EEWS
 void setup() {
-  Serial.begin(9600);
+  Serial.begin(115200);
   accel.begin();
 
   filter.reset();

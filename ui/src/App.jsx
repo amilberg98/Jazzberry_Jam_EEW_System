@@ -24,6 +24,7 @@ import {
     listenForUsbJsonPackets,
     monitorUsbDeviceConnections,
 } from "@/lib/usbPacketListener";
+import { AlertCircle, Upload, Pause, Play, X } from "lucide-react";
 
 const WINDOW_MS = 60_000;
 const FRAME_MS = 33;
@@ -34,11 +35,13 @@ const FFT_BAND_MIN_HZ = 1;
 const FFT_BAND_MAX_HZ = 20;
 const FFT_VIEW_MAX_HZ = 50;
 const SHOW_TEST_BUTTON = true;
+const DISPLAY_UPDATE_INTERVAL_MS = 250; // Show a new point every 0.25 seconds
 
 /**
  * @typedef {Object} DataPacket
  * @property {number} raw_vec
  * @property {number} accel_vec
+ * @property {number=} corrected_accel_vec
  * @property {number} filteredX
  * @property {number} filteredY
  * @property {number} filteredZ
@@ -67,6 +70,8 @@ export function pushLiveDataPacket(packet) {
 function toChartPoint(packet, index) {
     const rawVec = packet.raw_vec ?? packet.raw_accel ?? 0;
     const accelVec = packet.accel_vec ?? packet.filtered_accel ?? 0;
+    const correctedAccelVec =
+        packet.corrected_accel_vec ?? packet.correctedAccelVec ?? null;
     const filteredX = packet.filteredX ?? 0;
     const filteredY = packet.filteredY ?? 0;
     const filteredZ = packet.filteredZ ?? 0;
@@ -77,6 +82,7 @@ function toChartPoint(packet, index) {
         timeLabel: new Date().toLocaleTimeString(),
         raw_vec: rawVec,
         accel_vec: accelVec,
+        corrected_accel_vec: correctedAccelVec,
         filteredX,
         filteredY,
         filteredZ,
@@ -117,6 +123,7 @@ function createZeroPoint(timestamp, index = 1) {
         timeLabel: new Date(timestamp).toLocaleTimeString(),
         raw_vec: 0,
         accel_vec: 0,
+        corrected_accel_vec: null,
         filteredX: 0,
         filteredY: 0,
         filteredZ: 0,
@@ -170,7 +177,15 @@ function App() {
     const [isUsbConnected, setIsUsbConnected] = useState(false);
     const [isUsbConnecting, setIsUsbConnecting] = useState(false);
     const [usbConnectionError, setUsbConnectionError] = useState("");
+    const [isPlayingFile, setIsPlayingFile] = useState(false);
+    const [filePlaybackProgress, setFilePlaybackProgress] = useState(0);
+    const [fileMetadata, setFileMetadata] = useState(null);
+    const [filePlaybackError, setFilePlaybackError] = useState("");
+    const [showFileSelector, setShowFileSelector] = useState(false);
+    const [availableFiles, setAvailableFiles] = useState([]);
+    const [loadingFiles, setLoadingFiles] = useState(false);
     const activeAnimationRef = useRef(null);
+    const filePlaybackRef = useRef(null);
 
     useEffect(() => {
         const interval = setInterval(() => {
@@ -204,6 +219,14 @@ function App() {
                 accel_vec: mix(
                     animation.from.accel_vec,
                     animation.to.accel_vec,
+                ),
+                corrected_accel_vec: mix(
+                    Number.isFinite(animation.from.corrected_accel_vec)
+                        ? animation.from.corrected_accel_vec
+                        : animation.from.accel_vec,
+                    Number.isFinite(animation.to.corrected_accel_vec)
+                        ? animation.to.corrected_accel_vec
+                        : animation.to.accel_vec,
                 ),
                 filteredX: mix(
                     animation.from.filteredX,
@@ -462,6 +485,12 @@ function App() {
         return [...series, animatedPoint];
     }, [series, animatedPoint]);
 
+    const hasCorrectedSeries = useMemo(() => {
+        return chartData.some((point) =>
+            Number.isFinite(point.corrected_accel_vec),
+        );
+    }, [chartData]);
+
     const xAxisEnd = useMemo(() => {
         if (chartData.length === 0) {
             return now;
@@ -493,13 +522,24 @@ function App() {
 
         const rawSamples = windowPoints.map((point) => point.raw_vec);
         const filteredSamples = windowPoints.map((point) => point.accel_vec);
+        const correctedSamples = windowPoints.map(
+            (point) => point.corrected_accel_vec ?? 0,
+        );
 
         const rawSpectrum = buildMagnitudeSpectrum(rawSamples, sampleRateHz);
         const filteredSpectrum = buildMagnitudeSpectrum(
             filteredSamples,
             sampleRateHz,
         );
-        const bins = Math.min(rawSpectrum.length, filteredSpectrum.length);
+        const correctedSpectrum = buildMagnitudeSpectrum(
+            correctedSamples,
+            sampleRateHz,
+        );
+        const bins = Math.min(
+            rawSpectrum.length,
+            filteredSpectrum.length,
+            correctedSpectrum.length,
+        );
 
         const data = [];
         for (let k = 0; k < bins; k += 1) {
@@ -508,11 +548,15 @@ function App() {
                 break;
             }
 
-            data.push({
+            const point = {
                 frequencyHz,
                 raw_fft: rawSpectrum[k],
                 filtered_fft: filteredSpectrum[k],
-            });
+            };
+            if (hasCorrectedSeries) {
+                point.corrected_fft = correctedSpectrum[k];
+            }
+            data.push(point);
         }
 
         return data;
@@ -524,7 +568,11 @@ function App() {
         }
 
         const maxValue = fftData.reduce((acc, point) => {
-            return Math.max(acc, point.raw_fft, point.filtered_fft);
+            const values = [point.raw_fft, point.filtered_fft];
+            if (point.corrected_fft !== undefined) {
+                values.push(point.corrected_fft);
+            }
+            return Math.max(acc, ...values);
         }, 0);
 
         return Math.max(maxValue * 1.1, 0.01);
@@ -536,10 +584,15 @@ function App() {
         }
 
         const maxAbs = chartData.reduce((acc, point) => {
+            const corrected = Number.isFinite(point.corrected_accel_vec)
+                ? Math.abs(point.corrected_accel_vec)
+                : 0;
+
             return Math.max(
                 acc,
                 Math.abs(point.raw_vec),
                 Math.abs(point.accel_vec),
+                corrected,
                 Math.abs(point.filteredX),
                 Math.abs(point.filteredY),
                 Math.abs(point.filteredZ),
@@ -562,8 +615,290 @@ function App() {
         pushLiveDataPacket(packet);
     };
 
+    const stopFilePlayback = async () => {
+        if (filePlaybackRef.current) {
+            filePlaybackRef.current.shouldStop = true;
+            filePlaybackRef.current = null;
+        }
+        setIsPlayingFile(false);
+        setFilePlaybackProgress(0);
+    };
+
+    const handleFileFromPublic = async (fileName) => {
+        setFilePlaybackError("");
+        setShowFileSelector(false);
+
+        try {
+            // Stop any existing file playback
+            await stopFilePlayback();
+
+            // Disconnect USB device
+            if (stopUsbPacketListener) {
+                await stopUsbPacketListener();
+                stopUsbPacketListener = null;
+            }
+            setIsUsbConnected(false);
+
+            // Fetch JSON file from public folder
+            const response = await fetch(`/${fileName}`);
+            if (!response.ok) {
+                throw new Error(
+                    `Failed to load ${fileName}: ${response.statusText}`,
+                );
+            }
+            const jsonData = await response.json();
+
+            if (
+                !jsonData.timeSeries?.samples ||
+                !Array.isArray(jsonData.timeSeries.samples)
+            ) {
+                throw new Error(
+                    "Invalid JSON file format: missing timeSeries.samples",
+                );
+            }
+
+            const samples = jsonData.timeSeries.samples;
+            if (samples.length === 0) {
+                throw new Error("No samples in JSON file");
+            }
+
+            setFileMetadata(jsonData.metadata);
+            setIsPlayingFile(true);
+
+            // Create a playback context
+            const playbackContext = {
+                shouldStop: false,
+                currentIndex: 0,
+                startTime: Date.now(),
+                lastPacketTime: Date.now(),
+                samples: samples,
+            };
+            filePlaybackRef.current = playbackContext;
+
+            // Clear existing series and start fresh
+            setSeries([createZeroPoint(Date.now())]);
+
+            // Start playback loop
+            const playbackLoop = () => {
+                if (!playbackContext || playbackContext.shouldStop) {
+                    setIsPlayingFile(false);
+                    return;
+                }
+
+                const now = Date.now();
+                const elapsedMs = now - playbackContext.startTime;
+                const jsonSampleRate = jsonData.metadata?.sampleRateHz || 200;
+                const usbSampleRate = USB_SAMPLE_RATE_HZ;
+
+                // Calculate downsample ratio: how many JSON samples per USB sample
+                const downsampleRatio = Math.max(
+                    1,
+                    Math.round(jsonSampleRate / usbSampleRate),
+                );
+
+                // Time per USB sample (at our target rate)
+                const msPerUsbSample = 1000 / usbSampleRate;
+
+                // Calculate how many USB samples we should have delivered by now
+                let targetUsbSampleCount = Math.floor(
+                    elapsedMs / msPerUsbSample,
+                );
+                targetUsbSampleCount = Math.min(
+                    targetUsbSampleCount,
+                    Math.ceil(samples.length / downsampleRatio) - 1,
+                );
+
+                // Track the latest sample to display
+                let latestSample = null;
+
+                // Advance through samples, but only display at throttled intervals
+                while (
+                    playbackContext.currentIndex <= targetUsbSampleCount &&
+                    !playbackContext.shouldStop
+                ) {
+                    // Get the corresponding JSON sample (skip samples based on downsample ratio)
+                    const jsonSampleIndex =
+                        playbackContext.currentIndex * downsampleRatio;
+                    const sample =
+                        samples[Math.min(jsonSampleIndex, samples.length - 1)];
+
+                    if (sample) {
+                        latestSample = sample;
+                    }
+                    playbackContext.currentIndex++;
+                }
+
+                // Only push a packet every 0.25 seconds
+                if (
+                    latestSample &&
+                    now - playbackContext.lastPacketTime >=
+                        DISPLAY_UPDATE_INTERVAL_MS
+                ) {
+                    const packet = {
+                        raw_vec:
+                            latestSample.raw_vec ?? latestSample.raw_accel ?? 0,
+                        accel_vec:
+                            latestSample.accel_vec ??
+                            latestSample.filtered_accel ??
+                            0,
+                        corrected_accel_vec:
+                            latestSample.corrected_accel_vec ?? null,
+                        filteredX: latestSample.filteredX ?? 0,
+                        filteredY: latestSample.filteredY ?? 0,
+                        filteredZ: latestSample.filteredZ ?? 0,
+                        sta: latestSample.sta ?? 0,
+                        lta: latestSample.lta ?? 0,
+                        tauc: latestSample.tauc ?? 0,
+                        pd: latestSample.pd ?? 0,
+                    };
+
+                    pushLiveDataPacket(packet);
+                    playbackContext.lastPacketTime = now;
+                }
+
+                // Update progress based on actual JSON samples consumed
+                const jsonSamplesConsumed =
+                    playbackContext.currentIndex * downsampleRatio;
+                const progress = (jsonSamplesConsumed / samples.length) * 100;
+                setFilePlaybackProgress(progress);
+
+                // Check if we're done
+                const totalUsbSamples = Math.ceil(
+                    samples.length / downsampleRatio,
+                );
+                if (
+                    playbackContext.currentIndex >= totalUsbSamples &&
+                    !playbackContext.shouldStop
+                ) {
+                    setIsPlayingFile(false);
+                    playbackContext.shouldStop = true;
+                    return;
+                }
+
+                // Schedule next iteration
+                requestAnimationFrame(playbackLoop);
+            };
+
+            requestAnimationFrame(playbackLoop);
+        } catch (error) {
+            console.error("Error loading file:", error);
+            setFilePlaybackError(error.message || "Failed to load file");
+            setIsPlayingFile(false);
+        }
+    };
+
+    const handleLoadFileClick = async () => {
+        setShowFileSelector(true);
+        if (availableFiles.length === 0) {
+            setLoadingFiles(true);
+            try {
+                // Fetch list of available JSON files from public folder
+                const response = await fetch("/api/files.json");
+                if (response.ok) {
+                    const data = await response.json();
+                    setAvailableFiles(data.files || []);
+                } else {
+                    // Fallback: hardcoded list
+                    setAvailableFiles([
+                        {
+                            name: "0528_u.json",
+                            label: "Station 0528 (10k samples)",
+                        },
+                        {
+                            name: "0593_u.json",
+                            label: "Station 0593 (46.8k samples)",
+                        },
+                        {
+                            name: "1397_u.json",
+                            label: "Station 1397 (32.6k samples)",
+                        },
+                        {
+                            name: "2178_u.json",
+                            label: "Station 2178 (16.7k samples)",
+                        },
+                    ]);
+                }
+            } catch (error) {
+                console.warn(
+                    "Could not fetch file list, using defaults",
+                    error,
+                );
+                setAvailableFiles([
+                    {
+                        name: "0528_u.json",
+                        label: "Station 0528 (10k samples)",
+                    },
+                    {
+                        name: "0593_u.json",
+                        label: "Station 0593 (46.8k samples)",
+                    },
+                    {
+                        name: "1397_u.json",
+                        label: "Station 1397 (32.6k samples)",
+                    },
+                    {
+                        name: "2178_u.json",
+                        label: "Station 2178 (16.7k samples)",
+                    },
+                ]);
+            } finally {
+                setLoadingFiles(false);
+            }
+        }
+    };
+
     return (
         <main className="flex min-h-screen items-center bg-gradient-to-b from-background via-background to-muted/20 px-4 py-6 md:px-8">
+            {showFileSelector && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+                    <Card className="w-full max-w-sm border border-slate-900/10 bg-background shadow-xl">
+                        <CardHeader className="border-b">
+                            <CardTitle>Load JSON File</CardTitle>
+                            <CardDescription>
+                                Select a recorded dataset to playback
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="py-4">
+                            {loadingFiles ? (
+                                <p className="text-center text-sm text-muted-foreground py-4">
+                                    Loading available files...
+                                </p>
+                            ) : availableFiles.length > 0 ? (
+                                <div className="space-y-2">
+                                    {availableFiles.map((file) => (
+                                        <button
+                                            key={file.name}
+                                            onClick={() =>
+                                                handleFileFromPublic(file.name)
+                                            }
+                                            className="w-full rounded-lg border border-slate-900/10 bg-slate-900/5 p-3 text-left transition-colors hover:bg-blue-950/15 dark:border-blue-100/15 dark:bg-blue-950/25 dark:hover:bg-blue-900/40"
+                                        >
+                                            <div className="font-medium text-foreground">
+                                                {file.label || file.name}
+                                            </div>
+                                            <div className="text-xs text-muted-foreground">
+                                                {file.name}
+                                            </div>
+                                        </button>
+                                    ))}
+                                </div>
+                            ) : (
+                                <p className="text-center text-sm text-destructive py-4">
+                                    No JSON files found
+                                </p>
+                            )}
+                        </CardContent>
+                        <div className="flex justify-end gap-2 border-t px-6 py-3">
+                            <Button
+                                variant="outline"
+                                onClick={() => setShowFileSelector(false)}
+                            >
+                                Cancel
+                            </Button>
+                        </div>
+                    </Card>
+                </div>
+            )}
             <div className="mx-auto flex min-h-[calc(100vh-6rem)] w-full max-w-7xl flex-col justify-center gap-4 pb-20">
                 <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
                     <div className="rounded-lg border border-slate-900/10 bg-slate-900/5 p-3 transition-colors duration-300 hover:bg-blue-950/10 dark:border-blue-100/15 dark:bg-blue-950/25 dark:hover:bg-blue-900/35">
@@ -686,7 +1021,7 @@ function App() {
                                     <Line
                                         type="linear"
                                         dataKey="raw_vec"
-                                        name="Raw Vector"
+                                        name="Raw Acceleration"
                                         stroke="#94a3b8"
                                         strokeWidth={1.75}
                                         strokeDasharray="4 4"
@@ -696,12 +1031,25 @@ function App() {
                                     <Line
                                         type="linear"
                                         dataKey="accel_vec"
-                                        name="Accel Vector"
+                                        name="Filtered Acceleration"
                                         stroke="#3b82f6"
                                         strokeWidth={2.75}
                                         dot={false}
                                         isAnimationActive={false}
                                     />
+                                    {hasCorrectedSeries ? (
+                                        <Line
+                                            type="linear"
+                                            dataKey="corrected_accel_vec"
+                                            name="Station Corrected Acceleration"
+                                            stroke="#f59e0b"
+                                            strokeWidth={1.6}
+                                            strokeDasharray="4 4"
+                                            strokeOpacity={0.6}
+                                            dot={false}
+                                            isAnimationActive={false}
+                                        />
+                                    ) : null}
                                 </LineChart>
                             </ResponsiveContainer>
                         </CardContent>
@@ -825,7 +1173,9 @@ function App() {
 
                         <Card className="py-0 border border-slate-900/10 bg-slate-900/5 transition-shadow duration-300 hover:shadow-sm dark:border-blue-100/15 dark:bg-blue-950/25 flex flex-1 flex-col min-h-0">
                             <CardHeader className="border-b py-4">
-                                <CardTitle>FFT: Raw vs Filtered</CardTitle>
+                                <CardTitle>
+                                    FFT: Raw vs Filtered vs Corrected
+                                </CardTitle>
                                 <CardDescription>
                                     Frequency spectrum.
                                 </CardDescription>
@@ -915,6 +1265,17 @@ function App() {
                                             dot={false}
                                             isAnimationActive={false}
                                         />
+                                        {/* {hasCorrectedSeries ? (
+                                            <Line
+                                                type="linear"
+                                                dataKey="corrected_fft"
+                                                name="Station FFT"
+                                                stroke="#f59e0b"
+                                                strokeWidth={1.8}
+                                                dot={false}
+                                                isAnimationActive={false}
+                                            />
+                                        ) : null} */}
                                     </LineChart>
                                 </ResponsiveContainer>
                             </CardContent>
@@ -967,16 +1328,64 @@ function App() {
                         ) : null}
                     </div>
 
-                    {SHOW_TEST_BUTTON && (
-                        <Button
-                            variant="secondary"
-                            className="w-full sm:w-auto border border-border/70 bg-muted/40 text-foreground hover:bg-muted/70"
-                            onClick={handleAddRandomPoint}
-                        >
-                            Add Random Test Point
-                        </Button>
-                    )}
+                    <div className="flex gap-2 flex-wrap sm:flex-nowrap">
+                        {SHOW_TEST_BUTTON && (
+                            <Button
+                                variant="secondary"
+                                className="border border-border/70 bg-muted/40 text-foreground hover:bg-muted/70"
+                                onClick={handleAddRandomPoint}
+                            >
+                                Add Random Test Point
+                            </Button>
+                        )}
+
+                        {!isPlayingFile ? (
+                            <Button
+                                variant="default"
+                                className="flex items-center gap-2"
+                                onClick={handleLoadFileClick}
+                            >
+                                <Upload className="h-4 w-4" />
+                                Load JSON File
+                            </Button>
+                        ) : (
+                            <Button
+                                variant="destructive"
+                                className="flex items-center gap-2"
+                                onClick={stopFilePlayback}
+                            >
+                                <X className="h-4 w-4" />
+                                Stop Playback
+                            </Button>
+                        )}
+                    </div>
                 </div>
+
+                {filePlaybackError ? (
+                    <div className="flex items-center gap-2 rounded-lg border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
+                        <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                        <span>{filePlaybackError}</span>
+                    </div>
+                ) : null}
+
+                {isPlayingFile && (
+                    <div className="space-y-2">
+                        <div className="flex items-center justify-between text-sm">
+                            <span className="font-medium text-foreground">
+                                {fileMetadata?.stationName || "File Playback"}
+                            </span>
+                            <span className="text-muted-foreground">
+                                {Math.round(filePlaybackProgress)}%
+                            </span>
+                        </div>
+                        <div className="h-2 w-full rounded-full bg-slate-900/20 overflow-hidden dark:bg-blue-950/30">
+                            <div
+                                className="h-full bg-gradient-to-r from-blue-500 to-blue-600 transition-all duration-300"
+                                style={{ width: `${filePlaybackProgress}%` }}
+                            />
+                        </div>
+                    </div>
+                )}
 
                 {usbConnectionError ? (
                     <p className="text-xs text-destructive">

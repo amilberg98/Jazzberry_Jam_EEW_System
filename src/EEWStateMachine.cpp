@@ -215,7 +215,7 @@ void EEWStateMachine::handleMonitoring() {
                 // Broadcast values periodically to avoid spamming LoRA
                  if (millis() - lastBroadcastTime >= MONITOR_BROADCAST_INTERVAL_MS) {
                          char json[256];
-                         sprintf(json, "{\"state\":\"M\" \"raw_z\": %.6f, \"filtered_z\": %.6f,\"sta\": %.6f,\"lta\": %.6f,\"tauc\": %.6f,\"pd\": %.6f, \"ratio\": %.2f}", data.az, fz, stalta.getSTA(), stalta.getLTA(), taucpd.getTauC(), taucpd.getPd(), stalta.ratio);
+                         sprintf(json, "{\"state\":\"M\", \"raw_z\": %.6f, \"filtered_z\": %.6f,\"sta\": %.6f,\"lta\": %.6f,\"tauc\": %.6f,\"pd\": %.6f, \"ratio\": %.2f}", data.az, fz, stalta.getSTA(), stalta.getLTA(), taucpd.getTauC(), taucpd.getPd(), stalta.ratio);
                          Serial.printf("%s\n", json);
                 //         lora.send((uint8_t*)json, strlen(json));
                 //         lastBroadcastTime = millis();
@@ -249,7 +249,7 @@ void EEWStateMachine::handleAlert() {
                 // this part lastBroadcastTime ignored because messes up main logic to end alert
                  if (millis() - lastBroadcastTime >= MONITOR_BROADCAST_INTERVAL_MS) {
                          char json[256];
-                         sprintf(json, "{\"state\":\"A\" \"raw_z\": %.6f, \"filtered_z\": %.6f,\"sta\": %.6f,\"lta\": %.6f,\"tauc\": %.6f,\"pd\": %.6f, \"ratio\": %.2f}", data.az, fz, stalta.getSTA(), stalta.getLTA(), taucpd.getTauC(), taucpd.getPd(), stalta.ratio);                        
+                         sprintf(json, "{\"state\":\"A\", \"raw_z\": %.6f, \"filtered_z\": %.6f,\"sta\": %.6f,\"lta\": %.6f,\"tauc\": %.6f,\"pd\": %.6f, \"ratio\": %.2f}", data.az, fz, stalta.getSTA(), stalta.getLTA(), taucpd.getTauC(), taucpd.getPd(), stalta.ratio);                        
                          Serial.printf("%s\n", json);
                 //         lora.send((uint8_t*)json, strlen(json));
                 //         //lastBroadcastTime = millis();

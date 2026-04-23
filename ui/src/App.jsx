@@ -24,18 +24,149 @@ import {
     listenForUsbJsonPackets,
     monitorUsbDeviceConnections,
 } from "@/lib/usbPacketListener";
-import { AlertCircle, Upload, Pause, Play, X } from "lucide-react";
+import { AlertCircle, Upload, X } from "lucide-react";
 
 const WINDOW_MS = 60_000;
 const FRAME_MS = 33;
 const SEGMENT_ANIMATION_MS = 260;
 const USB_SAMPLE_RATE_HZ = 200;
-const FFT_WINDOW_SIZE = 256;
-const FFT_BAND_MIN_HZ = 1;
-const FFT_BAND_MAX_HZ = 20;
-const FFT_VIEW_MAX_HZ = 50;
-const SHOW_TEST_BUTTON = true;
 const DISPLAY_UPDATE_INTERVAL_MS = 250; // Show a new point every 0.25 seconds
+const COLLECTING_ON_LABEL_DY = 0;
+const EARTHQUAKE_LABEL_DY = 14;
+const COLLECTING_OFF_LABEL_DY = 28;
+const EARTHQUAKE_AREA_BASE_OPACITY = 0.12;
+const EARTHQUAKE_AREA_BASE_STROKE_OPACITY = 0.18;
+const EARTHQUAKE_AREA_EDGE_FADE_MS = 2500;
+const TRIGGER_ON_RATIO = 4.0;
+const TRIGGER_OFF_RATIO = 3.0;
+const STA_LTA_CONFIRM_MS = 300;
+const TAUCPD_EVAL_MS = 2000;
+const TAUC_ALERT_THRESHOLD = 0.6;
+const PD_ALERT_THRESHOLD = 0.001;
+const FILE_PLAYBACK_LTA_WARMUP_POINTS = 20;
+const FILE_PLAYBACK_STARTUP_RATIO_CAP = 3.8;
+const LTA_SEED_TAIL_SECONDS = 2;
+const LTA_SEED_HISTORY_SECONDS = 30;
+const EARTHQUAKE_FILE_CATALOG = [
+    {
+        name: "0528_u.json",
+        stationName: "AK:Eagle River;Alaska Geol Mat",
+        sampleRateHz: 200,
+        sampleCount: 10000,
+    },
+    {
+        name: "0593_u.json",
+        stationName: "AK:Fairbanks; Geoph Inst, CIGO",
+        sampleRateHz: 200,
+        sampleCount: 46800,
+    },
+    {
+        name: "1356_u.json",
+        stationName: "AK; Anchorage; BP Bldg.",
+        sampleRateHz: 200,
+        sampleCount: 24200,
+    },
+    {
+        name: "1397_u.json",
+        stationName: "AK: Anchorage;NOAA Weather Fac",
+        sampleRateHz: 200,
+        sampleCount: 32600,
+    },
+    {
+        name: "1713_u.json",
+        stationName: "AK: Valdez; Civic Center",
+        sampleRateHz: 200,
+        sampleCount: 14200,
+    },
+    {
+        name: "1727_u.json",
+        stationName: "AK: Valdez; Dock Company",
+        sampleRateHz: 200,
+        sampleCount: 17200,
+    },
+    {
+        name: "1728_u.json",
+        stationName: "AK: Valdez; City Hall",
+        sampleRateHz: 200,
+        sampleCount: 34000,
+    },
+    {
+        name: "1731_u.json",
+        stationName: "AK: Anchorage; DOI OAS",
+        sampleRateHz: 200,
+        sampleCount: 34400,
+    },
+    {
+        name: "1734_u.json",
+        stationName: "AK: Anchorage; New FS 7",
+        sampleRateHz: 200,
+        sampleCount: 37600,
+    },
+    {
+        name: "1737_u.json",
+        stationName: "AK: Anchorage; New FS 1",
+        sampleRateHz: 200,
+        sampleCount: 33800,
+    },
+    {
+        name: "2178_u.json",
+        stationName: "AK:Fairbanks; Univ of Alaska",
+        sampleRateHz: 200,
+        sampleCount: 16719,
+    },
+    {
+        name: "4005_u.json",
+        stationName: "AK: Moose Creek Dam",
+        sampleRateHz: 200,
+        sampleCount: 10623,
+    },
+    {
+        name: "5609_u.json",
+        stationName: "AK:Fairbanks; Ester FS",
+        sampleRateHz: 200,
+        sampleCount: 60000,
+    },
+    {
+        name: "k202_u.json",
+        stationName: "K2-02",
+        sampleRateHz: 200,
+        sampleCount: 64200,
+    },
+    {
+        name: "k203_u.json",
+        stationName: "K2-03",
+        sampleRateHz: 200,
+        sampleCount: 56000,
+    },
+    {
+        name: "k204_u.json",
+        stationName: "K2-04",
+        sampleRateHz: 200,
+        sampleCount: 70200,
+    },
+    {
+        name: "k205_u.json",
+        stationName: "K2-05",
+        sampleRateHz: 200,
+        sampleCount: 69600,
+    },
+    {
+        name: "k206_u.json",
+        stationName: "K2-06",
+        sampleRateHz: 200,
+        sampleCount: 58600,
+    },
+];
+
+const DEFAULT_PUBLIC_JSON_FILES = EARTHQUAKE_FILE_CATALOG.map((file) => ({
+    ...file,
+    label: file.stationName || file.name,
+    durationSec: file.sampleCount / file.sampleRateHz,
+}));
+
+const EARTHQUAKE_FILE_INDEX = Object.fromEntries(
+    DEFAULT_PUBLIC_JSON_FILES.map((file) => [file.name, file]),
+);
 
 /**
  * @typedef {Object} DataPacket
@@ -72,6 +203,7 @@ function toChartPoint(packet, index) {
     const accelVec = packet.accel_vec ?? packet.filtered_accel ?? 0;
     const correctedAccelVec =
         packet.corrected_accel_vec ?? packet.correctedAccelVec ?? null;
+    const state = typeof packet.state === "string" ? packet.state : "M";
     const filteredX = packet.filteredX ?? 0;
     const filteredY = packet.filteredY ?? 0;
     const filteredZ = packet.filteredZ ?? 0;
@@ -83,6 +215,7 @@ function toChartPoint(packet, index) {
         raw_vec: rawVec,
         accel_vec: accelVec,
         corrected_accel_vec: correctedAccelVec,
+        state,
         filteredX,
         filteredY,
         filteredZ,
@@ -90,29 +223,6 @@ function toChartPoint(packet, index) {
         lta: packet.lta,
         tauc: packet.tauc,
         pd: packet.pd,
-    };
-}
-
-function randomPacket(lastPoint) {
-    const rawBase = lastPoint ? lastPoint.raw_vec : 0.2;
-    const raw = rawBase + (Math.random() - 0.5) * 0.2;
-    const accelVec = raw * 0.8 + (Math.random() - 0.5) * 0.04;
-    const theta = Math.random() * Math.PI * 2;
-    const phi = Math.random() * Math.PI;
-    const filteredX = accelVec * Math.sin(phi) * Math.cos(theta);
-    const filteredY = accelVec * Math.sin(phi) * Math.sin(theta);
-    const filteredZ = accelVec * Math.cos(phi);
-
-    return {
-        raw_vec: Number(raw.toFixed(4)),
-        accel_vec: Number(accelVec.toFixed(4)),
-        filteredX: Number(filteredX.toFixed(4)),
-        filteredY: Number(filteredY.toFixed(4)),
-        filteredZ: Number(filteredZ.toFixed(4)),
-        sta: Number((Math.random() * 4 + 0.1).toFixed(3)),
-        lta: Number((Math.random() * 4 + 0.1).toFixed(3)),
-        tauc: Number((Math.random() * 2).toFixed(4)),
-        pd: Number((Math.random() * 0.2).toFixed(4)),
     };
 }
 
@@ -127,6 +237,7 @@ function createZeroPoint(timestamp, index = 1) {
         filteredX: 0,
         filteredY: 0,
         filteredZ: 0,
+        state: "M",
         sta: 0,
         lta: 0,
         tauc: 0,
@@ -135,35 +246,89 @@ function createZeroPoint(timestamp, index = 1) {
     };
 }
 
-function buildMagnitudeSpectrum(samples, sampleRateHz) {
-    const n = samples.length;
-    if (n < 32 || !Number.isFinite(sampleRateHz) || sampleRateHz <= 0) {
-        return [];
+function estimateLtaSeedFromTail(samples, sampleRateHz) {
+    const safeSampleRate =
+        Number.isFinite(sampleRateHz) && sampleRateHz > 0
+            ? sampleRateHz
+            : USB_SAMPLE_RATE_HZ;
+    const tailCount = Math.max(
+        2,
+        Math.round(safeSampleRate * LTA_SEED_TAIL_SECONDS),
+    );
+    const tailSamples = samples.slice(-tailCount);
+
+    const ltaCandidates = tailSamples
+        .map((sample) => {
+            const lta = Number(sample?.lta);
+            if (Number.isFinite(lta) && lta > 0) {
+                return lta;
+            }
+
+            const accel = Number(
+                sample?.accel_vec ??
+                    sample?.filtered_accel ??
+                    sample?.raw_vec ??
+                    0,
+            );
+            return Number.isFinite(accel) ? Math.abs(accel) : null;
+        })
+        .filter((value) => Number.isFinite(value) && value > 0);
+
+    if (ltaCandidates.length === 0) {
+        return 1;
     }
 
-    const mean = samples.reduce((sum, value) => sum + value, 0) / n;
-    const windowed = samples.map((value, index) => {
-        const hann = 0.5 - 0.5 * Math.cos((2 * Math.PI * index) / (n - 1));
-        return (value - mean) * hann;
-    });
+    const historyLength = Math.max(
+        ltaCandidates.length,
+        Math.round(safeSampleRate * LTA_SEED_HISTORY_SECONDS),
+    );
 
-    const half = Math.floor(n / 2);
-    const bins = [];
-
-    for (let k = 0; k <= half; k += 1) {
-        let real = 0;
-        let imag = 0;
-
-        for (let t = 0; t < n; t += 1) {
-            const angle = (2 * Math.PI * k * t) / n;
-            real += windowed[t] * Math.cos(angle);
-            imag -= windowed[t] * Math.sin(angle);
-        }
-
-        bins.push((2 / n) * Math.hypot(real, imag));
+    let baseline = ltaCandidates[0];
+    for (let i = 0; i < historyLength; i += 1) {
+        const sample = ltaCandidates[i % ltaCandidates.length];
+        baseline = baseline * 0.96 + sample * 0.04;
     }
 
-    return bins;
+    return Math.max(baseline, 0.05);
+}
+
+function normalizeAvailableFiles(files) {
+    const source = Array.isArray(files) ? files : [];
+
+    return source
+        .map((entry) =>
+            typeof entry === "string" ? { name: entry } : entry || {},
+        )
+        .filter((entry) => typeof entry.name === "string")
+        .map((entry) => {
+            const catalog = EARTHQUAKE_FILE_INDEX[entry.name] || {};
+            const sampleRateHz = Number(
+                entry.sampleRateHz ?? catalog.sampleRateHz,
+            );
+            const sampleCount = Number(
+                entry.sampleCount ?? catalog.sampleCount,
+            );
+
+            const durationSec =
+                Number.isFinite(sampleRateHz) &&
+                sampleRateHz > 0 &&
+                Number.isFinite(sampleCount) &&
+                sampleCount > 0
+                    ? sampleCount / sampleRateHz
+                    : Number(entry.durationSec ?? catalog.durationSec);
+
+            return {
+                name: entry.name,
+                label: entry.label ?? catalog.label ?? entry.name,
+                stationName: entry.stationName ?? catalog.stationName ?? "",
+                sampleRateHz: Number.isFinite(sampleRateHz)
+                    ? sampleRateHz
+                    : null,
+                sampleCount: Number.isFinite(sampleCount) ? sampleCount : null,
+                durationSec: Number.isFinite(durationSec) ? durationSec : null,
+            };
+        })
+        .sort((a, b) => a.name.localeCompare(b.name));
 }
 
 function App() {
@@ -175,6 +340,7 @@ function App() {
     const [yScaleMax, setYScaleMax] = useState(1);
     const [animatedPoint, setAnimatedPoint] = useState(null);
     const [isUsbConnected, setIsUsbConnected] = useState(false);
+    const [isUsbAvailable, setIsUsbAvailable] = useState(false);
     const [isUsbConnecting, setIsUsbConnecting] = useState(false);
     const [usbConnectionError, setUsbConnectionError] = useState("");
     const [isPlayingFile, setIsPlayingFile] = useState(false);
@@ -276,7 +442,7 @@ function App() {
         const serial = navigator.serial;
         let isMounted = true;
 
-        const syncConnectedState = async () => {
+        const syncAvailableState = async () => {
             if (!serial || typeof serial.getPorts !== "function") {
                 return;
             }
@@ -284,7 +450,7 @@ function App() {
             try {
                 const ports = await serial.getPorts();
                 if (isMounted) {
-                    setIsUsbConnected(ports.length > 0);
+                    setIsUsbAvailable(ports.length > 0);
                 }
             } catch (error) {
                 console.warn("Unable to query USB connection state.", error);
@@ -293,7 +459,7 @@ function App() {
 
         const handleConnect = () => {
             if (isMounted) {
-                setIsUsbConnected(true);
+                setIsUsbAvailable(true);
             }
         };
 
@@ -302,6 +468,7 @@ function App() {
                 return;
             }
 
+            setIsUsbAvailable(false);
             setIsUsbConnected(false);
             if (stopUsbPacketListener) {
                 await stopUsbPacketListener();
@@ -312,7 +479,7 @@ function App() {
         if (serial) {
             serial.addEventListener("connect", handleConnect);
             serial.addEventListener("disconnect", handleDisconnect);
-            syncConnectedState();
+            syncAvailableState();
         }
 
         const appendPacket = (packet) => {
@@ -369,7 +536,7 @@ function App() {
 
         pushPacketHandler = appendPacket;
         window.pushLiveDataPacket = pushLiveDataPacket;
-        window.startUsbPacketListener = async (baudRate = 9600) => {
+        window.startUsbPacketListener = async (baudRate = 115200) => {
             if (stopUsbPacketListener) {
                 await stopUsbPacketListener();
                 stopUsbPacketListener = null;
@@ -385,6 +552,7 @@ function App() {
 
             if (isMounted) {
                 setIsUsbConnected(true);
+                setIsUsbAvailable(true);
                 setUsbConnectionError("");
             }
 
@@ -399,6 +567,7 @@ function App() {
             stopUsbPacketListener = null;
             if (isMounted) {
                 setIsUsbConnected(false);
+                syncAvailableState();
             }
         };
 
@@ -460,6 +629,21 @@ function App() {
         }
     };
 
+    const handleDisconnectDevice = async () => {
+        if (isUsbConnecting) {
+            return;
+        }
+
+        try {
+            if (window.stopUsbPacketListener) {
+                await window.stopUsbPacketListener();
+            }
+        } catch (error) {
+            console.error("Unable to stop USB packet listener.", error);
+            setUsbConnectionError("Unable to disconnect device.");
+        }
+    };
+
     const latest = useMemo(() => {
         if (animatedPoint) {
             return {
@@ -503,80 +687,254 @@ function App() {
         return [-yScaleMax, yScaleMax];
     }, [yScaleMax]);
 
-    const fftData = useMemo(() => {
-        const maxSamples = Math.min(FFT_WINDOW_SIZE, chartData.length);
-        if (maxSamples < 32) {
-            return [];
-        }
+    const staLtaRatioData = useMemo(() => {
+        return chartData.map((point) => {
+            const safeRatio =
+                Number.isFinite(point.lta) && Math.abs(point.lta) > 1e-6
+                    ? point.sta / point.lta
+                    : null;
 
-        const fftSize = 2 ** Math.floor(Math.log2(maxSamples));
-        if (fftSize < 32) {
-            return [];
-        }
-
-        const windowPoints = chartData.slice(-fftSize);
-        const sampleRateHz = USB_SAMPLE_RATE_HZ;
-        if (!Number.isFinite(sampleRateHz) || sampleRateHz <= 0) {
-            return [];
-        }
-
-        const rawSamples = windowPoints.map((point) => point.raw_vec);
-        const filteredSamples = windowPoints.map((point) => point.accel_vec);
-        const correctedSamples = windowPoints.map(
-            (point) => point.corrected_accel_vec ?? 0,
-        );
-
-        const rawSpectrum = buildMagnitudeSpectrum(rawSamples, sampleRateHz);
-        const filteredSpectrum = buildMagnitudeSpectrum(
-            filteredSamples,
-            sampleRateHz,
-        );
-        const correctedSpectrum = buildMagnitudeSpectrum(
-            correctedSamples,
-            sampleRateHz,
-        );
-        const bins = Math.min(
-            rawSpectrum.length,
-            filteredSpectrum.length,
-            correctedSpectrum.length,
-        );
-
-        const data = [];
-        for (let k = 0; k < bins; k += 1) {
-            const frequencyHz = (k * sampleRateHz) / fftSize;
-            if (frequencyHz > FFT_VIEW_MAX_HZ) {
-                break;
-            }
-
-            const point = {
-                frequencyHz,
-                raw_fft: rawSpectrum[k],
-                filtered_fft: filteredSpectrum[k],
+            return {
+                ...point,
+                sta_lta_ratio: Number.isFinite(safeRatio) ? safeRatio : null,
             };
-            if (hasCorrectedSeries) {
-                point.corrected_fft = correctedSpectrum[k];
-            }
-            data.push(point);
-        }
-
-        return data;
+        });
     }, [chartData]);
 
-    const fftYMax = useMemo(() => {
-        if (fftData.length === 0) {
+    const chartDisplayData = useMemo(() => {
+        if (staLtaRatioData.length <= 1) {
+            return staLtaRatioData;
+        }
+
+        const sampled = [staLtaRatioData[0]];
+        let lastDisplayedTimestamp = staLtaRatioData[0].timestamp;
+        let previousRatio = staLtaRatioData[0].sta_lta_ratio;
+        let previousState = staLtaRatioData[0].state;
+
+        for (let i = 1; i < staLtaRatioData.length; i += 1) {
+            const point = staLtaRatioData[i];
+            const ratio = point.sta_lta_ratio;
+            const stateChanged = point.state !== previousState;
+            const triggeredOn =
+                Number.isFinite(previousRatio) &&
+                Number.isFinite(ratio) &&
+                previousRatio < TRIGGER_ON_RATIO &&
+                ratio >= TRIGGER_ON_RATIO;
+            const triggeredOff =
+                Number.isFinite(previousRatio) &&
+                Number.isFinite(ratio) &&
+                previousRatio > TRIGGER_OFF_RATIO &&
+                ratio <= TRIGGER_OFF_RATIO;
+            const isLastPoint = i === staLtaRatioData.length - 1;
+            const isTimeToSample =
+                point.timestamp - lastDisplayedTimestamp >=
+                DISPLAY_UPDATE_INTERVAL_MS;
+
+            if (
+                stateChanged ||
+                triggeredOn ||
+                triggeredOff ||
+                isTimeToSample ||
+                isLastPoint
+            ) {
+                sampled.push(point);
+                lastDisplayedTimestamp = point.timestamp;
+            }
+
+            previousRatio = ratio;
+            previousState = point.state;
+        }
+
+        return sampled;
+    }, [staLtaRatioData]);
+
+    const staLtaRatioYMax = useMemo(() => {
+        if (chartDisplayData.length === 0) {
             return 1;
         }
 
-        const maxValue = fftData.reduce((acc, point) => {
-            const values = [point.raw_fft, point.filtered_fft];
-            if (point.corrected_fft !== undefined) {
-                values.push(point.corrected_fft);
+        const maxValue = chartDisplayData.reduce((acc, point) => {
+            if (!Number.isFinite(point.sta_lta_ratio)) {
+                return acc;
             }
-            return Math.max(acc, ...values);
+
+            return Math.max(acc, point.sta_lta_ratio);
         }, 0);
 
-        return Math.max(maxValue * 1.1, 0.01);
-    }, [fftData]);
+        return Math.max(maxValue * 1.1, 0.2);
+    }, [chartDisplayData]);
+
+    const collectingEvents = useMemo(() => {
+        /** @type {Array<{ timestamp: number; type: "on" | "off" }>} */
+        const events = [];
+        let isTriggered = false;
+        let previousRatio = null;
+
+        for (const point of staLtaRatioData) {
+            const ratio = point.sta_lta_ratio;
+            if (!Number.isFinite(ratio)) {
+                previousRatio = null;
+                continue;
+            }
+
+            if (previousRatio === null) {
+                isTriggered = ratio >= TRIGGER_ON_RATIO;
+                previousRatio = ratio;
+                continue;
+            }
+
+            if (
+                !isTriggered &&
+                previousRatio < TRIGGER_ON_RATIO &&
+                ratio >= TRIGGER_ON_RATIO
+            ) {
+                events.push({ timestamp: point.timestamp, type: "on" });
+                isTriggered = true;
+            }
+
+            if (
+                isTriggered &&
+                previousRatio > TRIGGER_OFF_RATIO &&
+                ratio <= TRIGGER_OFF_RATIO
+            ) {
+                events.push({ timestamp: point.timestamp, type: "off" });
+                isTriggered = false;
+            }
+
+            previousRatio = ratio;
+        }
+
+        return events;
+    }, [staLtaRatioData]);
+
+    const earthquakeDetectedEvents = useMemo(() => {
+        const events = [];
+        const detectionWindowMs = STA_LTA_CONFIRM_MS + TAUCPD_EVAL_MS;
+
+        let previousState = null;
+
+        for (const point of chartData) {
+            const currentState =
+                typeof point.state === "string" ? point.state : null;
+
+            if (currentState === "A" && previousState !== "A") {
+                events.push({ timestamp: point.timestamp, type: "detected" });
+            }
+
+            previousState = currentState;
+        }
+
+        for (let i = 0; i < collectingEvents.length; i += 1) {
+            const event = collectingEvents[i];
+            if (event.type !== "on") {
+                continue;
+            }
+
+            const confirmEnd = event.timestamp + STA_LTA_CONFIRM_MS;
+            const evalEnd = event.timestamp + detectionWindowMs;
+
+            const confirmPoints = chartData.filter(
+                (point) =>
+                    point.timestamp >= event.timestamp &&
+                    point.timestamp <= confirmEnd &&
+                    Number.isFinite(point.sta_lta_ratio),
+            );
+
+            if (
+                confirmPoints.some(
+                    (point) => point.sta_lta_ratio < TRIGGER_ON_RATIO,
+                )
+            ) {
+                continue;
+            }
+
+            const evalPoints = chartData.filter(
+                (point) =>
+                    point.timestamp >= event.timestamp &&
+                    point.timestamp <= evalEnd,
+            );
+
+            const maxTauC = evalPoints.reduce((max, point) => {
+                return Number.isFinite(point.tauc)
+                    ? Math.max(max, point.tauc)
+                    : max;
+            }, 0);
+            const maxPd = evalPoints.reduce((max, point) => {
+                return Number.isFinite(point.pd)
+                    ? Math.max(max, point.pd)
+                    : max;
+            }, 0);
+
+            if (maxTauC > TAUC_ALERT_THRESHOLD && maxPd > PD_ALERT_THRESHOLD) {
+                events.push({ timestamp: evalEnd, type: "detected" });
+            }
+        }
+
+        return Array.from(
+            new Map(events.map((event) => [event.timestamp, event])).values(),
+        );
+    }, [chartData, collectingEvents]);
+
+    const visibleCollectingEvents = useMemo(() => {
+        const windowStart = xAxisEnd - WINDOW_MS;
+        return collectingEvents.filter(
+            (event) =>
+                event.timestamp >= windowStart && event.timestamp <= xAxisEnd,
+        );
+    }, [collectingEvents, xAxisEnd]);
+
+    const visibleEarthquakeAlertAreas = useMemo(() => {
+        const windowStart = xAxisEnd - WINDOW_MS;
+        const windowEnd = xAxisEnd;
+        const alertDurationMs = 10_000;
+
+        const mergedIntervals = [];
+        const sortedIntervals = earthquakeDetectedEvents
+            .map((event) => ({
+                start: event.timestamp,
+                end: event.timestamp + alertDurationMs,
+            }))
+            .sort((a, b) => a.start - b.start);
+
+        for (const interval of sortedIntervals) {
+            const lastInterval = mergedIntervals[mergedIntervals.length - 1];
+
+            if (!lastInterval || interval.start > lastInterval.end) {
+                mergedIntervals.push({ ...interval });
+                continue;
+            }
+
+            lastInterval.end = Math.max(lastInterval.end, interval.end);
+        }
+
+        return mergedIntervals
+            .map((interval) => {
+                const x1 = Math.max(interval.start, windowStart);
+                const x2 = Math.min(interval.end, windowEnd);
+                const fadeInScale = Math.min(
+                    1,
+                    (x2 - windowStart) / EARTHQUAKE_AREA_EDGE_FADE_MS,
+                );
+                const fadeOutScale = Math.min(
+                    1,
+                    (windowEnd - x1) / EARTHQUAKE_AREA_EDGE_FADE_MS,
+                );
+                const opacityScale = Math.max(
+                    0,
+                    Math.min(fadeInScale, fadeOutScale),
+                );
+
+                return {
+                    x1,
+                    x2,
+                    fillOpacity: EARTHQUAKE_AREA_BASE_OPACITY * opacityScale,
+                    strokeOpacity:
+                        EARTHQUAKE_AREA_BASE_STROKE_OPACITY * opacityScale,
+                    showLabel: opacityScale >= 0.45,
+                };
+            })
+            .filter((interval) => interval.x2 > interval.x1);
+    }, [earthquakeDetectedEvents, xAxisEnd]);
 
     useEffect(() => {
         if (chartData.length === 0) {
@@ -609,11 +967,6 @@ function App() {
             return Math.max(target, prev * 0.92);
         });
     }, [chartData]);
-
-    const handleAddRandomPoint = () => {
-        const packet = randomPacket(series[series.length - 1]);
-        pushLiveDataPacket(packet);
-    };
 
     const stopFilePlayback = async () => {
         if (filePlaybackRef.current) {
@@ -662,6 +1015,12 @@ function App() {
                 throw new Error("No samples in JSON file");
             }
 
+            const jsonSampleRate = jsonData.metadata?.sampleRateHz || 200;
+            const seededLtaBaseline = estimateLtaSeedFromTail(
+                samples,
+                jsonSampleRate,
+            );
+
             setFileMetadata(jsonData.metadata);
             setIsPlayingFile(true);
 
@@ -669,8 +1028,10 @@ function App() {
             const playbackContext = {
                 shouldStop: false,
                 currentIndex: 0,
+                displayedPointCount: 0,
                 startTime: Date.now(),
                 lastPacketTime: Date.now(),
+                ltaBaseline: seededLtaBaseline,
                 samples: samples,
             };
             filePlaybackRef.current = playbackContext;
@@ -687,7 +1048,6 @@ function App() {
 
                 const now = Date.now();
                 const elapsedMs = now - playbackContext.startTime;
-                const jsonSampleRate = jsonData.metadata?.sampleRateHz || 200;
                 const usbSampleRate = USB_SAMPLE_RATE_HZ;
 
                 // Calculate downsample ratio: how many JSON samples per USB sample
@@ -734,6 +1094,38 @@ function App() {
                     now - playbackContext.lastPacketTime >=
                         DISPLAY_UPDATE_INTERVAL_MS
                 ) {
+                    const staValue = Number(latestSample.sta ?? 0);
+                    const rawLtaValue = Number(latestSample.lta ?? 0);
+                    const staSafe = Number.isFinite(staValue) ? staValue : 0;
+                    const ltaCandidate =
+                        Number.isFinite(rawLtaValue) && rawLtaValue > 0
+                            ? rawLtaValue
+                            : null;
+
+                    if (ltaCandidate !== null) {
+                        playbackContext.ltaBaseline =
+                            playbackContext.ltaBaseline * 0.96 +
+                            ltaCandidate * 0.04;
+                    } else {
+                        const staForBaseline = Math.max(staSafe, 0.05);
+                        playbackContext.ltaBaseline =
+                            playbackContext.ltaBaseline * 0.98 +
+                            staForBaseline * 0.02;
+                    }
+
+                    let safeLta = ltaCandidate ?? playbackContext.ltaBaseline;
+
+                    // During startup, guard against tiny LTAs that would instantly exceed trigger-on.
+                    if (
+                        playbackContext.displayedPointCount <
+                        FILE_PLAYBACK_LTA_WARMUP_POINTS
+                    ) {
+                        const startupMinLta =
+                            Math.max(staSafe, 0.05) /
+                            FILE_PLAYBACK_STARTUP_RATIO_CAP;
+                        safeLta = Math.max(safeLta, startupMinLta);
+                    }
+
                     const packet = {
                         raw_vec:
                             latestSample.raw_vec ?? latestSample.raw_accel ?? 0,
@@ -746,14 +1138,15 @@ function App() {
                         filteredX: latestSample.filteredX ?? 0,
                         filteredY: latestSample.filteredY ?? 0,
                         filteredZ: latestSample.filteredZ ?? 0,
-                        sta: latestSample.sta ?? 0,
-                        lta: latestSample.lta ?? 0,
+                        sta: staSafe,
+                        lta: safeLta,
                         tauc: latestSample.tauc ?? 0,
                         pd: latestSample.pd ?? 0,
                     };
 
                     pushLiveDataPacket(packet);
                     playbackContext.lastPacketTime = now;
+                    playbackContext.displayedPointCount += 1;
                 }
 
                 // Update progress based on actual JSON samples consumed
@@ -796,51 +1189,20 @@ function App() {
                 const response = await fetch("/api/files.json");
                 if (response.ok) {
                     const data = await response.json();
-                    setAvailableFiles(data.files || []);
+                    const files = normalizeAvailableFiles(data.files);
+                    setAvailableFiles(
+                        files.length > 0 ? files : DEFAULT_PUBLIC_JSON_FILES,
+                    );
                 } else {
                     // Fallback: hardcoded list
-                    setAvailableFiles([
-                        {
-                            name: "0528_u.json",
-                            label: "Station 0528 (10k samples)",
-                        },
-                        {
-                            name: "0593_u.json",
-                            label: "Station 0593 (46.8k samples)",
-                        },
-                        {
-                            name: "1397_u.json",
-                            label: "Station 1397 (32.6k samples)",
-                        },
-                        {
-                            name: "2178_u.json",
-                            label: "Station 2178 (16.7k samples)",
-                        },
-                    ]);
+                    setAvailableFiles(DEFAULT_PUBLIC_JSON_FILES);
                 }
             } catch (error) {
                 console.warn(
                     "Could not fetch file list, using defaults",
                     error,
                 );
-                setAvailableFiles([
-                    {
-                        name: "0528_u.json",
-                        label: "Station 0528 (10k samples)",
-                    },
-                    {
-                        name: "0593_u.json",
-                        label: "Station 0593 (46.8k samples)",
-                    },
-                    {
-                        name: "1397_u.json",
-                        label: "Station 1397 (32.6k samples)",
-                    },
-                    {
-                        name: "2178_u.json",
-                        label: "Station 2178 (16.7k samples)",
-                    },
-                ]);
+                setAvailableFiles(DEFAULT_PUBLIC_JSON_FILES);
             } finally {
                 setLoadingFiles(false);
             }
@@ -851,37 +1213,86 @@ function App() {
         <main className="flex min-h-screen items-center bg-gradient-to-b from-background via-background to-muted/20 px-4 py-6 md:px-8">
             {showFileSelector && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-                    <Card className="w-full max-w-sm border border-slate-900/10 bg-background shadow-xl">
+                    <Card className="h-[88vh] w-[min(96vw,1100px)] border border-slate-900/10 bg-background shadow-xl">
                         <CardHeader className="border-b">
                             <CardTitle>Load JSON File</CardTitle>
                             <CardDescription>
-                                Select a recorded dataset to playback
+                                Browse and select an earthquake dataset for
+                                playback.
                             </CardDescription>
                         </CardHeader>
-                        <CardContent className="py-4">
+                        <CardContent className="flex min-h-0 flex-1 flex-col py-4">
                             {loadingFiles ? (
                                 <p className="text-center text-sm text-muted-foreground py-4">
                                     Loading available files...
                                 </p>
                             ) : availableFiles.length > 0 ? (
-                                <div className="space-y-2">
-                                    {availableFiles.map((file) => (
-                                        <button
-                                            key={file.name}
-                                            onClick={() =>
-                                                handleFileFromPublic(file.name)
-                                            }
-                                            className="w-full rounded-lg border border-slate-900/10 bg-slate-900/5 p-3 text-left transition-colors hover:bg-blue-950/15 dark:border-blue-100/15 dark:bg-blue-950/25 dark:hover:bg-blue-900/40"
-                                        >
-                                            <div className="font-medium text-foreground">
-                                                {file.label || file.name}
-                                            </div>
-                                            <div className="text-xs text-muted-foreground">
-                                                {file.name}
-                                            </div>
-                                        </button>
-                                    ))}
-                                </div>
+                                <>
+                                    <div className="mb-3 flex items-center justify-between px-1 text-xs text-muted-foreground">
+                                        <span>
+                                            {availableFiles.length} datasets
+                                        </span>
+                                        <span>
+                                            Scroll to view all earthquakes
+                                        </span>
+                                    </div>
+                                    <div className="grid grid-cols-[1.8fr_0.7fr_0.8fr_0.8fr] gap-2 rounded-md border border-slate-900/10 bg-slate-900/5 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground dark:border-blue-100/15 dark:bg-blue-950/25">
+                                        <span>Station</span>
+                                        <span>Rate</span>
+                                        <span>Samples</span>
+                                        <span>Duration</span>
+                                    </div>
+                                    <div className="mt-2 flex-1 space-y-2 overflow-y-auto pr-1">
+                                        {availableFiles.map((file) => (
+                                            <button
+                                                key={file.name}
+                                                onClick={() =>
+                                                    handleFileFromPublic(
+                                                        file.name,
+                                                    )
+                                                }
+                                                className="w-full rounded-lg border border-slate-900/10 bg-slate-900/5 px-3 py-2 text-left transition-colors hover:bg-blue-950/15 dark:border-blue-100/15 dark:bg-blue-950/25 dark:hover:bg-blue-900/40"
+                                            >
+                                                <div className="grid grid-cols-[1.8fr_0.7fr_0.8fr_0.8fr] gap-2 text-sm text-foreground">
+                                                    <div className="min-w-0">
+                                                        <div className="truncate font-medium">
+                                                            {file.stationName ||
+                                                                file.label ||
+                                                                file.name}
+                                                        </div>
+                                                        <div className="truncate text-xs text-muted-foreground">
+                                                            {file.name}
+                                                        </div>
+                                                    </div>
+                                                    <div className="text-xs text-muted-foreground">
+                                                        {Number.isFinite(
+                                                            file.sampleRateHz,
+                                                        )
+                                                            ? `${file.sampleRateHz} Hz`
+                                                            : "-"}
+                                                    </div>
+                                                    <div className="text-xs text-muted-foreground">
+                                                        {Number.isFinite(
+                                                            file.sampleCount,
+                                                        )
+                                                            ? file.sampleCount.toLocaleString()
+                                                            : "-"}
+                                                    </div>
+                                                    <div className="text-xs text-muted-foreground">
+                                                        {Number.isFinite(
+                                                            file.durationSec,
+                                                        )
+                                                            ? `${(
+                                                                  file.durationSec /
+                                                                  60
+                                                              ).toFixed(1)} min`
+                                                            : "-"}
+                                                    </div>
+                                                </div>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </>
                             ) : (
                                 <p className="text-center text-sm text-destructive py-4">
                                     No JSON files found
@@ -899,42 +1310,7 @@ function App() {
                     </Card>
                 </div>
             )}
-            <div className="mx-auto flex min-h-[calc(100vh-6rem)] w-full max-w-7xl flex-col justify-center gap-4 pb-20">
-                <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-                    <div className="rounded-lg border border-slate-900/10 bg-slate-900/5 p-3 transition-colors duration-300 hover:bg-blue-950/10 dark:border-blue-100/15 dark:bg-blue-950/25 dark:hover:bg-blue-900/35">
-                        <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                            STA
-                        </p>
-                        <p className="text-xl font-semibold">
-                            {latest.sta.toFixed(3)}
-                        </p>
-                    </div>
-                    <div className="rounded-lg border border-slate-900/10 bg-slate-900/5 p-3 transition-colors duration-300 hover:bg-blue-950/10 dark:border-blue-100/15 dark:bg-blue-950/25 dark:hover:bg-blue-900/35">
-                        <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                            LTA
-                        </p>
-                        <p className="text-xl font-semibold">
-                            {latest.lta.toFixed(3)}
-                        </p>
-                    </div>
-                    <div className="rounded-lg border border-slate-900/10 bg-slate-900/5 p-3 transition-colors duration-300 hover:bg-blue-950/10 dark:border-blue-100/15 dark:bg-blue-950/25 dark:hover:bg-blue-900/35">
-                        <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                            TAUC
-                        </p>
-                        <p className="text-xl font-semibold">
-                            {latest.tauc.toFixed(4)}
-                        </p>
-                    </div>
-                    <div className="rounded-lg border border-slate-900/10 bg-slate-900/5 p-3 transition-colors duration-300 hover:bg-blue-950/10 dark:border-blue-100/15 dark:bg-blue-950/25 dark:hover:bg-blue-900/35">
-                        <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                            PD
-                        </p>
-                        <p className="text-xl font-semibold">
-                            {latest.pd.toFixed(4)}
-                        </p>
-                    </div>
-                </div>
-
+            <div className="mx-auto flex min-h-[calc(100vh-6rem)] w-full max-w-7xl flex-col justify-center gap-4">
                 <div className="grid gap-4 lg:grid-cols-5">
                     <Card className="h-[76vh] py-0 border border-slate-900/10 bg-slate-900/5 transition-shadow duration-300 hover:shadow-sm dark:border-blue-100/15 dark:bg-blue-950/25 lg:col-span-3 flex flex-col">
                         <CardHeader className="border-b py-4">
@@ -946,7 +1322,7 @@ function App() {
                         <CardContent className="min-h-0 flex-1 px-2 pb-4 pt-5 sm:px-4">
                             <ResponsiveContainer width="100%" height="100%">
                                 <LineChart
-                                    data={chartData}
+                                    data={chartDisplayData}
                                     margin={{
                                         top: 16,
                                         right: 16,
@@ -996,6 +1372,60 @@ function App() {
                                         stroke="var(--muted-foreground)"
                                         strokeOpacity={0.45}
                                     />
+                                    {visibleEarthquakeAlertAreas.map((area) => (
+                                        <ReferenceArea
+                                            key={`${area.x1}-${area.x2}`}
+                                            x1={area.x1}
+                                            x2={area.x2}
+                                            y1={yDomain[0]}
+                                            y2={yDomain[1]}
+                                            fill="#dc2626"
+                                            fillOpacity={area.fillOpacity}
+                                            stroke="#dc2626"
+                                            strokeOpacity={area.strokeOpacity}
+                                            label={
+                                                area.showLabel
+                                                    ? {
+                                                          value: "Earthquake Detected",
+                                                          position:
+                                                              "insideTopRight",
+                                                          fill: "#dc2626",
+                                                          fontSize: 11,
+                                                          dy: EARTHQUAKE_LABEL_DY,
+                                                      }
+                                                    : undefined
+                                            }
+                                        />
+                                    ))}
+                                    {visibleCollectingEvents.map((event) => (
+                                        <ReferenceLine
+                                            key={`${event.type}-${event.timestamp}`}
+                                            x={event.timestamp}
+                                            stroke={
+                                                event.type === "on"
+                                                    ? "#22c55e"
+                                                    : "#f59e0b"
+                                            }
+                                            strokeDasharray="6 4"
+                                            strokeWidth={1.4}
+                                            label={{
+                                                value:
+                                                    event.type === "on"
+                                                        ? "Collecting On"
+                                                        : "Collecting Off",
+                                                position: "insideTopRight",
+                                                fill:
+                                                    event.type === "on"
+                                                        ? "#22c55e"
+                                                        : "#f59e0b",
+                                                fontSize: 10,
+                                                dy:
+                                                    event.type === "on"
+                                                        ? COLLECTING_ON_LABEL_DY
+                                                        : COLLECTING_OFF_LABEL_DY,
+                                            }}
+                                        />
+                                    ))}
                                     <Tooltip
                                         cursor={{
                                             stroke: "var(--ring)",
@@ -1056,17 +1486,52 @@ function App() {
                     </Card>
 
                     <div className="flex h-[76vh] flex-col gap-4 lg:col-span-2">
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="rounded-lg border border-slate-900/10 bg-slate-900/5 p-3 transition-colors duration-300 hover:bg-blue-950/10 dark:border-blue-100/15 dark:bg-blue-950/25 dark:hover:bg-blue-900/35">
+                                <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                                    STA
+                                </p>
+                                <p className="text-xl font-semibold">
+                                    {latest.sta.toFixed(3)}
+                                </p>
+                            </div>
+                            <div className="rounded-lg border border-slate-900/10 bg-slate-900/5 p-3 transition-colors duration-300 hover:bg-blue-950/10 dark:border-blue-100/15 dark:bg-blue-950/25 dark:hover:bg-blue-900/35">
+                                <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                                    LTA
+                                </p>
+                                <p className="text-xl font-semibold">
+                                    {latest.lta.toFixed(3)}
+                                </p>
+                            </div>
+                            <div className="rounded-lg border border-slate-900/10 bg-slate-900/5 p-3 transition-colors duration-300 hover:bg-blue-950/10 dark:border-blue-100/15 dark:bg-blue-950/25 dark:hover:bg-blue-900/35">
+                                <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                                    TAUC
+                                </p>
+                                <p className="text-xl font-semibold">
+                                    {latest.tauc.toFixed(4)}
+                                </p>
+                            </div>
+                            <div className="rounded-lg border border-slate-900/10 bg-slate-900/5 p-3 transition-colors duration-300 hover:bg-blue-950/10 dark:border-blue-100/15 dark:bg-blue-950/25 dark:hover:bg-blue-900/35">
+                                <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                                    PD
+                                </p>
+                                <p className="text-xl font-semibold">
+                                    {latest.pd.toFixed(4)}
+                                </p>
+                            </div>
+                        </div>
+
                         <Card className="py-0 border border-slate-900/10 bg-slate-900/5 transition-shadow duration-300 hover:shadow-sm dark:border-blue-100/15 dark:bg-blue-950/25 flex flex-1 flex-col min-h-0">
                             <CardHeader className="border-b py-4">
-                                <CardTitle>Filtered Axes</CardTitle>
+                                <CardTitle>STA/LTA Ratio Over Time</CardTitle>
                                 <CardDescription>
-                                    Filtered X, Y, and Z components.
+                                    Live ratio of STA divided by LTA.
                                 </CardDescription>
                             </CardHeader>
-                            <CardContent className="min-h-0 flex-1 px-2 pb-4 pt-5 sm:px-4">
+                            <CardContent className="min-h-0 flex flex-1 flex-col px-2 pb-4 pt-5 sm:px-4">
                                 <ResponsiveContainer width="100%" height="100%">
                                     <LineChart
-                                        data={chartData}
+                                        data={chartDisplayData}
                                         margin={{
                                             top: 8,
                                             right: 8,
@@ -1100,7 +1565,14 @@ function App() {
                                             }
                                         />
                                         <YAxis
-                                            domain={yDomain}
+                                            type="number"
+                                            domain={[
+                                                0,
+                                                Math.max(
+                                                    staLtaRatioYMax,
+                                                    TRIGGER_ON_RATIO * 1.05,
+                                                ),
+                                            ]}
                                             tickLine
                                             axisLine
                                             stroke="var(--muted-foreground)"
@@ -1109,11 +1581,6 @@ function App() {
                                             tickFormatter={(value) =>
                                                 Number(value).toFixed(3)
                                             }
-                                        />
-                                        <ReferenceLine
-                                            y={0}
-                                            stroke="var(--muted-foreground)"
-                                            strokeOpacity={0.45}
                                         />
                                         <Tooltip
                                             cursor={{
@@ -1135,113 +1602,29 @@ function App() {
                                                 })
                                             }
                                         />
-                                        <Legend
-                                            verticalAlign="top"
-                                            height={24}
-                                        />
-                                        <Line
-                                            type="linear"
-                                            dataKey="filteredX"
-                                            name="Filtered X"
-                                            stroke="#f9a8d4"
-                                            strokeWidth={2}
-                                            dot={false}
-                                            isAnimationActive={false}
-                                        />
-                                        <Line
-                                            type="linear"
-                                            dataKey="filteredY"
-                                            name="Filtered Y"
-                                            stroke="#86efac"
-                                            strokeWidth={2}
-                                            dot={false}
-                                            isAnimationActive={false}
-                                        />
-                                        <Line
-                                            type="linear"
-                                            dataKey="filteredZ"
-                                            name="Filtered Z"
-                                            stroke="#93c5fd"
-                                            strokeWidth={2}
-                                            dot={false}
-                                            isAnimationActive={false}
-                                        />
-                                    </LineChart>
-                                </ResponsiveContainer>
-                            </CardContent>
-                        </Card>
-
-                        <Card className="py-0 border border-slate-900/10 bg-slate-900/5 transition-shadow duration-300 hover:shadow-sm dark:border-blue-100/15 dark:bg-blue-950/25 flex flex-1 flex-col min-h-0">
-                            <CardHeader className="border-b py-4">
-                                <CardTitle>
-                                    FFT: Raw vs Filtered vs Corrected
-                                </CardTitle>
-                                <CardDescription>
-                                    Frequency spectrum.
-                                </CardDescription>
-                            </CardHeader>
-                            <CardContent className="min-h-0 flex flex-1 flex-col px-2 pb-4 pt-5 sm:px-4">
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <LineChart
-                                        data={fftData}
-                                        margin={{
-                                            top: 8,
-                                            right: 8,
-                                            left: 6,
-                                            bottom: 8,
-                                        }}
-                                    >
-                                        <CartesianGrid
-                                            strokeDasharray="3 3"
-                                            stroke="var(--muted)"
-                                        />
-                                        <ReferenceArea
-                                            x1={FFT_BAND_MIN_HZ}
-                                            x2={FFT_BAND_MAX_HZ}
-                                            y1={0}
-                                            y2={fftYMax}
-                                            fill="#86efac"
-                                            fillOpacity={0.12}
-                                        />
-                                        <XAxis
-                                            dataKey="frequencyHz"
-                                            type="number"
-                                            domain={[0, FFT_VIEW_MAX_HZ]}
-                                            tickLine
-                                            axisLine
-                                            stroke="var(--muted-foreground)"
-                                            tickMargin={6}
-                                            minTickGap={20}
-                                            tickFormatter={(value) =>
-                                                `${value.toFixed(0)} Hz`
-                                            }
-                                        />
-                                        <YAxis
-                                            type="number"
-                                            domain={[0, fftYMax]}
-                                            tickLine
-                                            axisLine
-                                            stroke="var(--muted-foreground)"
-                                            tickMargin={6}
-                                            width={52}
-                                            tickFormatter={(value) =>
-                                                Number(value).toFixed(3)
-                                            }
-                                        />
-                                        <Tooltip
-                                            cursor={{
-                                                stroke: "var(--ring)",
-                                                strokeWidth: 1,
+                                        <ReferenceLine
+                                            y={TRIGGER_ON_RATIO}
+                                            stroke="#ef4444"
+                                            strokeDasharray="6 4"
+                                            strokeWidth={1.5}
+                                            label={{
+                                                value: `Collecting On (${TRIGGER_ON_RATIO.toFixed(1)})`,
+                                                position: "insideTopRight",
+                                                fill: "#ef4444",
+                                                fontSize: 11,
                                             }}
-                                            contentStyle={{
-                                                borderRadius: "0.75rem",
-                                                borderColor: "var(--border)",
-                                                boxShadow:
-                                                    "0 1px 2px rgba(15, 23, 42, 0.08)",
+                                        />
+                                        <ReferenceLine
+                                            y={TRIGGER_OFF_RATIO}
+                                            stroke="#f59e0b"
+                                            strokeDasharray="6 4"
+                                            strokeWidth={1.5}
+                                            label={{
+                                                value: `Collecting Off (${TRIGGER_OFF_RATIO.toFixed(1)})`,
+                                                position: "insideTopRight",
+                                                fill: "#f59e0b",
+                                                fontSize: 11,
                                             }}
-                                            labelFormatter={(label) =>
-                                                `${Number(label).toFixed(2)} Hz`
-                                            }
                                         />
                                         <Legend
                                             verticalAlign="top"
@@ -1249,33 +1632,13 @@ function App() {
                                         />
                                         <Line
                                             type="linear"
-                                            dataKey="raw_fft"
-                                            name="Raw FFT"
-                                            stroke="#94a3b8"
-                                            strokeWidth={1.8}
-                                            dot={false}
-                                            isAnimationActive={false}
-                                        />
-                                        <Line
-                                            type="linear"
-                                            dataKey="filtered_fft"
-                                            name="Filtered FFT"
-                                            stroke="#3b82f6"
+                                            dataKey="sta_lta_ratio"
+                                            name="STA/LTA Ratio"
+                                            stroke="#10b981"
                                             strokeWidth={2.2}
                                             dot={false}
                                             isAnimationActive={false}
                                         />
-                                        {/* {hasCorrectedSeries ? (
-                                            <Line
-                                                type="linear"
-                                                dataKey="corrected_fft"
-                                                name="Station FFT"
-                                                stroke="#f59e0b"
-                                                strokeWidth={1.8}
-                                                dot={false}
-                                                isAnimationActive={false}
-                                            />
-                                        ) : null} */}
                                     </LineChart>
                                 </ResponsiveContainer>
                             </CardContent>
@@ -1291,7 +1654,9 @@ function App() {
                             className={`h-5 w-5 ${
                                 isUsbConnected
                                     ? "text-emerald-500"
-                                    : "text-slate-400"
+                                    : isUsbAvailable
+                                      ? "text-amber-500"
+                                      : "text-slate-400"
                             }`}
                             fill="none"
                             stroke="currentColor"
@@ -1310,35 +1675,37 @@ function App() {
                             className={`h-2.5 w-2.5 rounded-full ${
                                 isUsbConnected
                                     ? "bg-emerald-500"
-                                    : "bg-slate-400"
+                                    : isUsbAvailable
+                                      ? "bg-amber-500"
+                                      : "bg-slate-400"
                             }`}
                         />
                         <span>
-                            {isUsbConnected ? "Connected" : "Disconnected"}
+                            {isUsbConnected
+                                ? "Connected"
+                                : isUsbAvailable
+                                  ? "Available"
+                                  : "Disconnected"}
                         </span>
-                        {!isUsbConnected ? (
-                            <button
-                                type="button"
-                                className="ml-1 font-medium text-blue-600 transition-colors hover:text-blue-500 dark:text-blue-400 dark:hover:text-blue-300"
-                                onClick={handleConnectDevice}
-                                disabled={isUsbConnecting}
-                            >
-                                {isUsbConnecting ? "Connecting..." : "Connect"}
-                            </button>
-                        ) : null}
+                        <button
+                            type="button"
+                            className="ml-1 font-medium text-blue-600 transition-colors hover:text-blue-500 dark:text-blue-400 dark:hover:text-blue-300"
+                            onClick={
+                                isUsbConnected
+                                    ? handleDisconnectDevice
+                                    : handleConnectDevice
+                            }
+                            disabled={isUsbConnecting}
+                        >
+                            {isUsbConnecting
+                                ? "Connecting..."
+                                : isUsbConnected
+                                  ? "Disconnect"
+                                  : "Connect"}
+                        </button>
                     </div>
 
                     <div className="flex gap-2 flex-wrap sm:flex-nowrap">
-                        {SHOW_TEST_BUTTON && (
-                            <Button
-                                variant="secondary"
-                                className="border border-border/70 bg-muted/40 text-foreground hover:bg-muted/70"
-                                onClick={handleAddRandomPoint}
-                            >
-                                Add Random Test Point
-                            </Button>
-                        )}
-
                         {!isPlayingFile ? (
                             <Button
                                 variant="default"

@@ -1,5 +1,6 @@
 /**
  * @typedef {Object} LivePacket
+ * @property {string} state
  * @property {number} raw_vec
  * @property {number} accel_vec
  * @property {number} filteredX
@@ -11,6 +12,7 @@
  * @property {number} lta
  * @property {number} tauc
  * @property {number} pd
+ * @property {number} ratio
  */
 
 /**
@@ -96,18 +98,16 @@ export function monitorUsbDeviceConnections() {
 /**
  * Listen on a USB serial device for newline-delimited JSON packets.
  * Expected payload fields (new schema):
- * raw_vec, accel_vec, filteredX, filteredY, filteredZ, sta, lta, tauc, pd
- *
- * Also supports legacy fields: raw, filtered
+ * state, raw_z, filtered_z, sta, lta, tauc, pd, ratio
  *
  * Example payload (new schema):
- * {"raw_vec":0.1,"accel_vec":0.08,"filteredX":0.01,"filteredY":0.02,"filteredZ":0.03,"sta":1.2,"lta":0.9,"tauc":0.01,"pd":0.3}
+ * {"state":"A","raw_z":0.1,"filtered_z":0.08,"sta":1.2,"lta":0.9,"tauc":0.01,"pd":0.3,"ratio":1.33}
  *
  * @param {UsbPacketListenerOptions} options
  * @returns {Promise<() => Promise<void>>} async cleanup function
  */
 export async function listenForUsbJsonPackets(options) {
-    const { baudRate = 9600, onPacket, onError, onRawData } = options ?? {};
+    const { baudRate = 115200, onPacket, onError, onRawData } = options ?? {};
     console.info("USB listener: start requested.");
 
     if (typeof onPacket !== "function") {
@@ -183,49 +183,46 @@ export async function listenForUsbJsonPackets(options) {
             payload = JSON.parse(normalized);
         }
 
-        const raw = toNumber(payload.raw_vec);
-        const accelVec = toNumber(payload.filteredZ);
-        // const accelVec = toNumber(payload.accel_vec);
-        const filteredLegacy = toNumber(payload.filtered);
-        const filteredX = toNumber(payload.filteredX);
-        const filteredY = toNumber(payload.filteredY);
-        const filteredZ = toNumber(payload.filteredZ);
-        const filteredMagnitude =
-            filteredX !== null && filteredY !== null && filteredZ !== null
-                ? Math.hypot(filteredX, filteredY, filteredZ)
-                : null;
-        const filtered = accelVec ?? filteredLegacy ?? filteredMagnitude;
+        const state = typeof payload.state === "string" ? payload.state : null;
+        const raw = toNumber(payload.raw_z ?? payload.raw_vec);
+        const filteredZ = toNumber(payload.filtered_z ?? payload.filteredZ);
+        const filteredX =
+            toNumber(payload.filteredX ?? payload.filtered_x) ?? 0;
+        const filteredY =
+            toNumber(payload.filteredY ?? payload.filtered_y) ?? 0;
         const sta = toNumber(payload.sta);
         const lta = toNumber(payload.lta);
         const tauc = toNumber(payload.tauc);
         const pd = toNumber(payload.pd);
+        const ratio = toNumber(payload.ratio);
 
         if (
+            state === null ||
             raw === null ||
-            filtered === null ||
-            filteredX === null ||
-            filteredY === null ||
             filteredZ === null ||
             sta === null ||
             lta === null ||
             tauc === null ||
-            pd === null
+            pd === null ||
+            ratio === null
         ) {
-            throw new Error("Packet missing required numeric fields.");
+            throw new Error("Packet missing required fields.");
         }
 
         return {
+            state,
             raw_vec: raw,
-            accel_vec: filtered,
+            accel_vec: filteredZ,
             filteredX,
             filteredY,
             filteredZ,
             raw_accel: raw,
-            filtered_accel: filtered,
+            filtered_accel: filteredZ,
             sta,
             lta,
             tauc,
             pd,
+            ratio,
         };
     };
 

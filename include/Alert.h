@@ -8,6 +8,8 @@
 const int BUZZER_PIN = 13;
 const int ERR_PIN = 14;
 const int ALERT_PIN = 2;
+const int EARTHQUAKE_FREQ = 4000; // Frequency for alarm
+const int ERROR_FREQ = 2000; // Frequency for error alert
 
 // Handles device and broadcasted (LoRA) alerts, and 
 // local error alert.

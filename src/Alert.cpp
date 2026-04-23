@@ -13,8 +13,7 @@ Alert::Alert(Radio& radioRef, int buzzerPin, TauCPdEstimator& taucpdRef) : radio
 // startLocalAlert
 // Plays buzzer noise and enables red LED for local alert
 void Alert::startLocalAlert() {
-    // TODO: Use tone(buzzerPin, EARTHQUAKE_FREQ) with passive buzzer for unique alert
-    digitalWrite(BUZZER_PIN, HIGH);
+    tone(BUZZER_PIN, EARTHQUAKE_FREQ);
     digitalWrite(ALERT_PIN, HIGH);
     localAlertStartTime = millis();
     localAlertActive = true;
@@ -23,7 +22,7 @@ void Alert::startLocalAlert() {
 // stopLocalAlert
 // Disables buzzer for local alert
 void Alert::stopLocalAlert() {
-    digitalWrite(BUZZER_PIN, LOW);
+    noTone(BUZZER_PIN);
     digitalWrite(ALERT_PIN, LOW);
     localAlertActive = false;
 }
@@ -31,8 +30,7 @@ void Alert::stopLocalAlert() {
 // startErrorAlert
 // Plays buzzer noise and enables yellow LED for error alert
 void Alert::startErrorAlert() {
-    // TODO: get passive buzzer and change tone
-    digitalWrite(BUZZER_PIN, HIGH); 
+    tone(BUZZER_PIN, ERROR_FREQ);
     digitalWrite(ERR_PIN, HIGH);
 }
 

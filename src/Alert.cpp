@@ -108,21 +108,6 @@ void Alert::update() {
         Serial.println("Local alert timeout, stopping alert");
         stopLocalAlert();
     }
-    // TODO use below with passive buzzer
-    // if (localAlertActive) {
-    //     unsigned long now = millis();
-    //     if (now - localAlertStartTime > LOCAL_ALERT_DURATION_MS) {
-    //         stopLocalAlert();
-    //     } else {
-    //         // Alternate tone on/off every BEEP_INTERVAL_MS for urgency
-    //         bool beepOn = ((now - localAlertStartTime) / BEEP_INTERVAL_MS) % 2 == 0;
-    //         if (beepOn) {
-    //             tone(buzzerPin, EARTHQUAKE_FREQ);
-    //         } else {
-    //             noTone(buzzerPin);
-    //         }
-    //     }
-    // }
 }
 
 bool Alert::alreadySeen(const String& id) {

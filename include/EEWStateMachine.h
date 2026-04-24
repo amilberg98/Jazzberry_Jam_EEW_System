@@ -9,6 +9,8 @@
 #include "STALTA.h"
 #include "taucpd.h"
 #include "Alert.h"
+#include <Wire.h>
+#include <axp20x.h>
 
 
 // Handles main functionality of device, swapping between monitoring, alerting, and error states
@@ -44,6 +46,7 @@ private:
     STALTA& stalta;
     TauCPdEstimator& taucpd;
     Alert& alert;
+    AXP20X_Class power;
 
     unsigned long alertStartTime = 0;
     unsigned long lastBroadcastTime = 0;

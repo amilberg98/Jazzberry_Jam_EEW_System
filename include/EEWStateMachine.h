@@ -10,7 +10,7 @@
 #include "taucpd.h"
 #include "Alert.h"
 #include <Wire.h>
-#include <XPowersAXP2101.h>
+#include <XPowersLib.h>
 
 
 // Handles main functionality of device, swapping between monitoring, alerting, and error states

@@ -14,12 +14,12 @@ EEWStateMachine::EEWStateMachine(accelADC &accelRef, Biquad &filterRef, Radio &l
 void EEWStateMachine::begin()
 {
     Wire.begin(21, 22);
-    if (!power.begin(Wire, AXP2101_SLAVE_ADDRESS)) {
+    if (!power.begin(Wire, AXP2101_SLAVE_ADDRESS, 21, 22)) {
       power.enableBattDetection();
       currState = State::MONITORING;
       lora.startListen();
     } else {
-      currState = State:ERROR;
+      currState = State::ERROR;
       return;
     }
 }

@@ -21,7 +21,7 @@ accelADC accel(X_PIN, Y_PIN, Z_PIN);
 Radio radio(LORA_CS_PIN, LORA_IRQ_PIN, LORA_RST_PIN);
 Biquad filter;
 STALTA stalta;
-TauCPdEstimator taucpd(accel.SAMPLE_RATE_HZ, TAUCPD_SAMPLE_WINDOW); // TODO maybe modify sample rate
+TauCPdEstimator taucpd(accel.SAMPLE_RATE_HZ, TAUCPD_SAMPLE_WINDOW);
 Alert alert(radio, BUZZER_PIN, taucpd); // Buzzer on pin 13
 EEWStateMachine eews(accel, filter, radio, stalta, taucpd, alert);
 

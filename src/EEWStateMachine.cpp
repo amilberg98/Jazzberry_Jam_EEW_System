@@ -13,8 +13,14 @@ EEWStateMachine::EEWStateMachine(accelADC &accelRef, Biquad &filterRef, Radio &l
 // Starts LoRA listening and begins in Monitoring state
 void EEWStateMachine::begin()
 {
-    currState = State::MONITORING;
-    lora.startListen();
+    Wire.begin();
+    if (!power.begin(Wire, AXP192_SLAVE_ADDRESS)) {
+      currState = State::MONITORING;
+      lora.startListen();
+    } else {
+      currState = State:ERROR;
+      return;
+    }
 }
 
 // update
@@ -37,9 +43,18 @@ void EEWStateMachine::update()
 }
 
 // checkBattery
-// Checks the battery level to see if too low and trigger error
+// Checks the battery percentage
 float EEWStateMachine::checkBattery() {
-  return (power.getBattVoltage() / 1000.0);
+  // mV to V
+  float voltage = (power.getBattVoltage() / 1000.0);
+
+  // Convert to percentage assuming 4.2V 100%, 3.0V 0%
+  float percent = (voltage - 3.0) / (4.2 - 3.0) * 100.0;
+
+  // Force between 0–100
+  if (percent > 100) percent = 100;
+  if (percent < 0) percent = 0;
+  return percent;
 }
 
 /************** State Handling Functions ***************/
@@ -50,7 +65,8 @@ float EEWStateMachine::checkBattery() {
 // alert and for low battery.
 void EEWStateMachine::handleMonitoring()
 {
-    if (errorDetected())
+    // Go to error if less than 10% battery or if device error
+    if (errorDetected() || (checkBattery() < 10))
     {
         enterError();
         return;
@@ -127,7 +143,6 @@ void EEWStateMachine::handleMonitoring()
     }
 
     alert.recvNetworkAlert();
-    float voltage = checkBattery();
 }
 
 // handleAlert

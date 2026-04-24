@@ -10,7 +10,7 @@
 #include "taucpd.h"
 #include "Alert.h"
 #include <Wire.h>
-#include <axp20x.h>
+#include <XPowersAXP2101.h>
 
 
 // Handles main functionality of device, swapping between monitoring, alerting, and error states
@@ -29,8 +29,6 @@ public:
     void begin();
     void update();
 
-   // void runFilterLog(int numSamples = 1000);
-
 private:
     enum class State
     {
@@ -46,7 +44,7 @@ private:
     STALTA& stalta;
     TauCPdEstimator& taucpd;
     Alert& alert;
-    AXP20X_Class power;
+    XPowersAXP2101 power;
 
     unsigned long alertStartTime = 0;
     unsigned long lastBroadcastTime = 0;
@@ -91,13 +89,8 @@ private:
     void enterError();
 
 
-
-    // Placeholder functions 
-        int checkBattery() { // TODO fix doesnt work
-            uint32_t raw = analogRead(35);
-            return (raw / 1000.0);
-        } // Check battery via analogRead voltage divider
-        bool errorDetected();
+    float checkBattery();
+    bool errorDetected();
 
 };
 

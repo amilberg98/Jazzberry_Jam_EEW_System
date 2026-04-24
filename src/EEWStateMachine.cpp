@@ -13,8 +13,9 @@ EEWStateMachine::EEWStateMachine(accelADC &accelRef, Biquad &filterRef, Radio &l
 // Starts LoRA listening and begins in Monitoring state
 void EEWStateMachine::begin()
 {
-    Wire.begin();
-    if (!power.begin(Wire, AXP192_SLAVE_ADDRESS)) {
+    Wire.begin(21, 22);
+    if (!power.begin(Wire, AXP2101_SLAVE_ADDRESS)) {
+      power.enableBattDetection();
       currState = State::MONITORING;
       lora.startListen();
     } else {

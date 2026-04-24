@@ -36,6 +36,12 @@ void EEWStateMachine::update()
     }
 }
 
+// checkBattery
+// Checks the battery level to see if too low and trigger error
+float EEWStateMachine::checkBattery() {
+  return (power.getBattVoltage() / 1000.0);
+}
+
 /************** State Handling Functions ***************/
 
 // handleMonitoring
@@ -201,6 +207,7 @@ void EEWStateMachine::enterError()
     currState = State::ERROR;
     alert.startErrorAlert();
 }
+
 
 bool EEWStateMachine::errorDetected()
 {

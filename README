@@ -1,0 +1,314 @@
+# Jazzberry Jam EEW System
+
+A portable, low-cost **Earthquake Early Warning (EEW)** device that detects the P-wave of an earthquake on-device, sounds a local alarm, and relays the alert to neighboring devices over **LoRa radio**, with no internet connection required. The repo also contains a React dashboard for live and replayed data, and a C++ test harness that validates the detection algorithms against real seismograph recordings.
+
+---
+
+## Project Team & Revision Info
+
+| | |
+|---|---|
+| **Previous group name** | Team Teal Blue|
+| **Current group name** | Team Jazzberry Jam |
+| **Previous group members** | Jack Burton, Alex Moy, Senri Nakamura, Tyler Lin, Maurice Jang |
+| **Current group members** | Asher Milberg, Charlie Fitzpatrick, Megan Best |
+| **Most recent update** |  |
+| **Repository** | https://github.com/amilberg98/Jazzberry_Jam_EEW_System |
+
+---
+
+## Table of Contents
+
+1. [Overview](#overview)
+2. [How It Works](#how-it-works)
+3. [Repository Structure](#repository-structure)
+4. [Hardware](#hardware)
+5. [Firmware (`src/` + `include/`)](#firmware-src--include)
+6. [How the Components Connect](#how-the-components-connect)
+7. [Serial Data Format](#serial-data-format)
+8. [LoRa Alert Protocol](#lora-alert-protocol)
+9. [Dashboard (`ui/`)](#dashboard-ui)
+10. [Algorithm Testing (`testing/`)](#algorithm-testing-testing)
+11. [Build & Run](#build--run)
+12. [Tunable Parameters](#tunable-parameters)
+13. [Known Issues & TODOs](#known-issues--todos)
+
+---
+
+## Overview
+
+The goal is a **portable, affordable EEW device** that detects seismic P-waves and issues alerts with very low latency, without requiring internet connectivity. The project was developed at Tufts University in partnership with Schneider Electric (per the `testing/` documentation).
+
+Each node:
+
+1. Samples a 3-axis analog accelerometer at **200 Hz**.
+2. Band-pass filters the vertical (Z) axis to the **2–10 Hz** seismic band.
+3. Detects an event with **STA/LTA**, then validates it with the **τc (tau-c)** and **Pd** parameters used in real EEW research.
+4. Sounds a buzzer and LED locally, and **broadcasts an alert over LoRa** (433 MHz) so nearby nodes can alarm too.
+5. Streams JSON telemetry over USB serial to a browser dashboard.
+
+---
+
+## How It Works
+
+Detection is a **two-phase** process so that noise spikes (a bump, a door slam) don't trigger false alarms:
+
+```
+ raw Z accel ──► Biquad band-pass ──► STA/LTA ──► ratio ≥ 4.0?
+                                                      │ yes
+                                                      ▼
+                               Phase 1: stay triggered for 300 ms
+                                                      │ yes
+                                                      ▼
+                               Phase 2: collect τc and Pd for 2 s
+                                                      │
+                       max τc > 0.60  AND  max Pd > 0.001 ?
+                                                      │ yes
+                                                      ▼
+                           ALERT: buzzer + LED + LoRa broadcast
+```
+
+- **STA/LTA** compares short-term average amplitude (200 samples = 1 s) against long-term (6000 samples = 30 s). A sudden jump in the ratio indicates a new event.
+- **τc** (characteristic period) and **Pd** (peak displacement) are computed from integrated velocity and displacement. Together they help distinguish a real earthquake from a local disturbance.
+
+---
+
+## Repository Structure
+
+```
+Jazzberry_Jam_EEW_System/
+├── platformio.ini            # PlatformIO build config (ESP32 / TTGO T-Beam)
+├── src/                      # Firmware implementation (.cpp)
+│   ├── main.cpp              # Entry point: pin map, object wiring, setup()/loop()
+│   ├── EEWStateMachine.cpp   # Top-level MONITORING / ALERT / ERROR logic
+│   ├── accelADC.cpp          # Accelerometer sampling, calibration, unit conversion
+│   ├── biquad.cpp            # 2-stage IIR band-pass filter
+│   ├── STALTA.cpp            # STA/LTA event trigger
+│   ├── taucpd.cpp            # τc and Pd estimator
+│   ├── Alert.cpp             # Buzzer/LED + LoRa alert send/receive/dedup
+│   └── radio.cpp             # SX1276 LoRa wrapper (RadioLib)
+├── include/                  # Firmware headers (one per .cpp above)
+├── lib/, test/               # PlatformIO placeholders (unused)
+├── ui/                       # React + Vite live dashboard
+│   ├── src/App.jsx           # Main dashboard (charts, playback, USB controls)
+│   ├── src/lib/usbPacketListener.js  # Web Serial reader / JSON packet parser
+│   ├── src/components/ui/    # shadcn-style UI primitives
+│   └── public/*_u.json       # Pre-processed earthquake recordings for replay
+└── testing/                  # Desktop algorithm validation
+    ├── Makefile
+    ├── src/parsers/smcparser.cpp   # Parser for .smc strong-motion files
+    ├── src/smc_replay_util.cpp     # Replays recordings through the firmware algorithms
+    ├── tests/                      # Catch2 tests
+    ├── data/20021103_2212_uncorr/  # Real 2002 Denali Fault quake recordings (.smc)
+    └── output/*.json               # Replay results consumed by the UI
+```
+
+---
+
+## Hardware
+
+| Component | Role |
+|---|---|
+| **LilyGO TTGO T-Beam** (ESP32) | Main microcontroller board (`board = ttgo-t-beam`) |
+| **SX1276 LoRa module** (onboard) | 433 MHz radio for node-to-node alerts |
+| **AXP2101 PMU** (onboard) | Battery voltage monitoring over I²C |
+| **3-axis analog accelerometer** (ADXL-class, 1000 mV/g) | Ground motion sensing |
+| **Buzzer** | Local audible alarm |
+| **Red LED** (alert) / **Yellow LED** (error) | Local visual indicators |
+
+### Pin Map
+
+| Signal | GPIO |
+|---|---|
+| Accelerometer X / Y / Z | 36 / 39 / 35 |
+| LoRa CS / IRQ (DIO0) / RST | 18 / 26 / 23 |
+| Buzzer | 13 |
+| Alert LED | 2 |
+| Error LED | 14 |
+| I²C SDA / SCL (PMU) | 21 / 22 |
+
+---
+
+## Firmware (`src/` + `include/`)
+
+| Module | What it does | Connects to |
+|---|---|---|
+| **`main.cpp`** | Defines pins, constructs every object, injects them into the state machine, runs `setup()` (init ADC, filter, radio, estimator, state machine) and `loop()` (`eews.update()`). | Everything |
+| **`EEWStateMachine`** | The brain. Three states: `MONITORING` (sample, filter, detect, listen for network alerts, check battery), `ALERT` (sound alarm, broadcast over LoRa for 10 s, keep streaming data), `ERROR` (continuous error tone). Also reads battery through the AXP2101. | `accelADC`, `Biquad`, `STALTA`, `TauCPdEstimator`, `Alert`, `Radio` |
+| **`accelADC`** | Configures the ESP32 ADC (12-bit, 11 dB attenuation), calibrates per-axis bias from 1000 samples at boot, enforces a 200 Hz sample clock, and converts millivolts to m/s². Raises an error flag on ADC setup failure. | State machine |
+| **`Biquad`** | Two cascaded second-order sections forming a band-pass for ~2–10 Hz. Coefficients are hard-coded (`platformio.ini` excludes a `calcCoeff.py` from the build, but that script is not in the repo). | State machine |
+| **`STALTA`** | Rolling short/long-term average of \|signal\|, with 4.0 on / 3.0 off hysteresis and a warm-up period (10% of the LTA window) before it can trigger. | State machine |
+| **`TauCPdEstimator`** | Trapezoidally integrates acceleration to velocity and displacement over a sliding 3 s window (reset at window boundaries to limit drift), mean-detrends, then computes τc = 2π·√(Σd² / Σv²) and Pd = max\|d\|. | State machine, `Alert` |
+| **`Alert`** | Local alarm (4 kHz tone + red LED, auto-stop after 10 s), error alarm (2 kHz + yellow LED), LoRa broadcast of τc/Pd, reception and parsing of peers' alerts, **cascading rebroadcast** after a 2 s delay, and a de-duplication table (8 entries, 30 s window) keyed on sender MAC. | `Radio`, `TauCPdEstimator` |
+| **`Radio`** | Thin wrapper over RadioLib's SX1276: SF7, 125 kHz bandwidth, CR 4/5, 17 dBm, 16-symbol preamble. Interrupt-driven receive flag, transmit, standby/sleep, and an error flag. | `Alert`, state machine |
+
+---
+
+## How the Components Connect
+
+```
+                     ┌────────────────────────────── ESP32 (T-Beam) ───────────────────────────────┐
+                     │                                                                              │
+ Accelerometer ──►  accelADC ──► Biquad ──► STALTA ───┐                                              │
+  (X, Y, Z)           │ (az)     (fz)       (ratio)   │                                              │
+                      │                               ▼                                              │
+                      │                      EEWStateMachine ──► TauCPdEstimator (τc, Pd)            │
+                      │                        │   │    │                 │                           │
+ AXP2101 battery ─────┼────────────────────────┘   │    │                 ▼                           │
+                      │                            │    └──────────►   Alert ──► Buzzer + LEDs       │
+                      │                            │                    │  ▲                         │
+                      │                            ▼                    ▼  │                         │
+                      │                          Radio (SX1276) ◄───────┴──┘                         │
+                      └──────────────────────────────┬──────────────────────────────┬───────────────┘
+                                                     │ LoRa 433 MHz                 │ USB serial, 115200
+                                                     ▼                              ▼
+                                           Other EEW nodes              ui/ dashboard (Web Serial)
+```
+
+**Offline validation path (no hardware required):**
+
+```
+ testing/data/*.smc ──► smcparser ──► smc_replay_util ──► firmware's STALTA/Biquad/taucpd (same .cpp files)
+                                              │
+                                              ▼
+                                   testing/output/*.json ──► ui/public/*_u.json ──► dashboard "play file"
+```
+
+The testing `Makefile` compiles the **actual firmware sources** (`../src/STALTA.cpp`, `taucpd.cpp`, `biquad.cpp`), so the desktop tests exercise the same algorithm code that runs on the device.
+
+---
+
+## Serial Data Format
+
+During `MONITORING` (`"state":"M"`) and `ALERT` (`"state":"A"`), the device prints one JSON object per sample over USB serial at **115200 baud**:
+
+```json
+{"state":"M", "raw_z": 0.012000, "filtered_z": 0.003100, "sta": 0.004200, "lta": 0.003900, "tauc": 0.000000, "pd": 0.000000, "ratio": 1.08}
+```
+
+| Field | Meaning |
+|---|---|
+| `state` | `M` monitoring, `A` alert |
+| `raw_z` / `filtered_z` | Vertical acceleration before and after the band-pass (m/s²) |
+| `sta` / `lta` | Short- and long-term averages |
+| `ratio` | STA/LTA ratio |
+| `tauc` / `pd` | Current τc and Pd estimates |
+
+The dashboard's `usbPacketListener.js` parses these lines and also supports richer replay-style fields (`raw_vec`, `filteredX/Y/Z`, etc.). During the collecting phase the firmware also prints plain-text `COLLECTING: ...` lines for debugging.
+
+---
+
+## LoRa Alert Protocol
+
+Alerts are plain-text messages:
+
+```
+EARTHQUAKE ALERT: ID=<sender MAC> SEQ=<n> TauC=<x.xx> PD=<x.xx>
+```
+
+**Receive logic (`Alert::recvNetworkAlert`):**
+
+1. Parse `ID`, `SEQ`, `TauC`, `PD`; ignore malformed messages.
+2. Drop the message if that sender ID was already seen in the last 30 s (prevents rebroadcast storms).
+3. If `TauC > 8.0` **and** `PD > 0.5`, start the local alarm and schedule a rebroadcast of this node's own τc/Pd 2 s later.
+
+This lets an alert hop outward from the first node that detects the P-wave. When a node enters `ALERT`, it puts the radio in standby and then transmits; when it returns to `MONITORING`, it resumes listening.
+
+---
+
+## Dashboard (`ui/`)
+
+A **React 19 + Vite 8** single-page app styled with Tailwind CSS 4, shadcn-style components, and Recharts.
+
+- **Live mode:** connects to the device using the browser **Web Serial API** (Chrome/Edge), reads the JSON stream, and plots raw/filtered acceleration, STA/LTA, τc, and Pd in real time.
+- **Replay mode:** plays back pre-processed earthquake recordings from `ui/public/*_u.json` (stations such as `0528`, `1356`, `k202`–`k206`) so the algorithm can be demonstrated without a device or an earthquake.
+- `App.jsx` holds the charting, playback, and connection state; `usbPacketListener.js` handles the serial connection and packet parsing.
+
+---
+
+## Algorithm Testing (`testing/`)
+
+Desktop C++17 tooling that validates the detection algorithms against **real strong-motion data** from the **2002 Denali Fault, Alaska earthquake** (`20021103_2212`).
+
+| File | Purpose |
+|---|---|
+| `src/parsers/smcparser.cpp` | Parses `.smc` strong-motion files into `AccelerometerRecord` (station, channel, start time, sampling interval, data points). |
+| `src/smc_replay_util.cpp` | Groups the X/Y/Z channels per station, runs them through the firmware's Biquad → STA/LTA → τc/Pd pipeline (mirroring the state machine's two-phase logic), and writes a JSON result per station to `output/`. |
+| `tests/main.cpp` | Catch2 entry point with a custom output listener. |
+| `tests/smcparser_test.cpp` | Verifies the parser against a known file. |
+| `tests/unit_test.cpp` | Placeholder for algorithm unit tests (currently only includes). |
+
+---
+
+## Build & Run
+
+### Firmware (PlatformIO)
+
+Requires [PlatformIO](https://platformio.org/). Libraries (`RadioLib`, `XPowersLib`, `Wire`) are fetched automatically.
+
+```bash
+pio run                  # build for ttgo-t-beam
+pio run -t upload        # flash the board
+pio device monitor       # serial monitor @ 115200 baud
+```
+
+### Dashboard
+
+```bash
+cd ui
+npm install
+npm run dev              # open the printed local URL in Chrome or Edge
+```
+
+Click to connect to the device (Web Serial), or choose a recording to replay.
+
+### Algorithm tests & replay
+
+Requires `clang++` (C++17) and `make`. Run from inside `testing/` (paths are relative).
+
+```bash
+cd testing
+make test                # build and run Catch2 tests
+make replay              # replay all recordings → output/*.json
+```
+
+---
+
+## Tunable Parameters
+
+| Parameter | Value | Location |
+|---|---|---|
+| Sample rate | 200 Hz | `accelADC.h` |
+| Band-pass | ~2–10 Hz | `biquad.cpp` coefficients |
+| STA / LTA length | 200 / 6000 samples | `STALTA.h` |
+| STA/LTA trigger on / off | 4.0 / 3.0 | `STALTA.h` |
+| STA/LTA confirmation time | 300 ms | `EEWStateMachine.h` |
+| τc/Pd evaluation window | 2 s | `EEWStateMachine.h` |
+| Local τc / Pd thresholds | 0.60 / 0.001 | `EEWStateMachine.h` |
+| Received-alert τc / Pd thresholds | 8.0 / 0.5 | `Alert.h` |
+| τc/Pd integration window | 3 s | `main.cpp` |
+| Alert duration | 10 s | `EEWStateMachine.h`, `Alert.h` |
+| Low-battery cutoff | < 10% (3.0–4.2 V scale) | `EEWStateMachine.cpp` |
+| LoRa | 433 MHz, SF7, 125 kHz BW, CR 4/5, 17 dBm | `main.cpp`, `radio.cpp` |
+
+Alternate "less sensitive, more delay" thresholds (τc 2.0, Pd 0.0001) are left commented in `EEWStateMachine.h`.
+
+---
+
+## Known Issues & TODOs
+
+Observed while reviewing the code, so the next team knows where to look:
+
+- **PMU init check may be inverted.** `EEWStateMachine::begin()` enters `MONITORING` when `power.begin(...)` returns *false*. Verify against XPowersLib's return convention.
+- **Received-alert thresholds differ from local ones** (8.0/0.5 vs 0.60/0.001) and the broadcast values are printed with 2 decimals, so small Pd values transmit as `0.00`. Confirm this is intended.
+- **Thresholds are tuned to one dataset** (the 2002 Denali recordings); real-world false-positive testing is still needed.
+- `Alert` uses WiFi's MAC address as sender ID, which pulls in the WiFi library only for that.
+- Several `TODO`s remain in the source: tune sample rate and bias samples, configure LoRa parameters, and refine alert tones.
+- `testing/README.md` describes an older layout (`include/algorithms/stalta.hpp`); the `Makefile` now builds the firmware sources directly.
+- `testing/tests/unit_test.cpp` has no test cases yet.
+- `ui/README.md` is still the default Vite template.
+- `test/` and `lib/` contain only PlatformIO placeholder READMEs.
+
+---
+
+*Last updated: April 24, 2026, 10:21 AM EDT (latest commit `cd0a976`).*
